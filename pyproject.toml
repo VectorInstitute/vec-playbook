@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["helpers*", "starters*"]
+
+[project]
+name = "vec-playbook"
+version = "0.1.0"
+description = "Ready-to-run training patterns and demos that launch with vec-tool"
+authors = [{name = "Farnaz Kohankhaki", email = "farnaz.kohankhaki@vectorinstitute.ai"}]
+requires-python = ">=3.12"
+dependencies = [
+    "vec-tool>=0.1.0",
+    "torch>=2.0.0,<2.6.0",
+    "transformers>=4.20.0,<4.52.0",
+    "datasets>=2.0.0,<3.6.0",
+    "accelerate>=0.26.0",
+    "numpy>=1.21.0,<2.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit>=3.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+# No CLI of our own—launch via vec-tool dotted paths
+
+
+[tool.ruff]
+include = ["*.py", "pyproject.toml", "*.ipynb"]
+line-length = 88
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+    "A","B","COM","C4","RET","SIM","ICN","Q","RSE","D","E","F","I","W","N","ERA","PL",
+]
+fixable = ["A","B","COM","C4","RET","SIM","ICN","Q","RSE","D","E","F","I","W","N","ERA","PL"]
+ignore = [
+    "B905","E501","D203","D213","PLR2004","PLR0913","COM812",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402","F401","F403","F811"]
+
+[tool.ruff.lint.pep8-naming]
+ignore-names = ["X*", "setUp"]
+
+[tool.ruff.lint.isort]
+lines-after-imports = 2
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 88
