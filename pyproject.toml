@@ -12,7 +12,7 @@ description = "Ready-to-run training patterns and demos that launch with vec-too
 authors = [{name = "Farnaz Kohankhaki", email = "farnaz.kohankhaki@vectorinstitute.ai"}]
 requires-python = ">=3.12"
 dependencies = [
-    "vec-tool>=0.1.0",
+    "vec-tool @ git+https://github.com/VectorInstitute/vec-tool@main",
     "torch>=2.0.0,<2.6.0",
     "transformers>=4.20.0,<4.52.0",
     "datasets>=2.0.0,<3.6.0",
