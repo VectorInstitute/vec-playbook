@@ -1,0 +1,22 @@
+# Experiment configuration for single HF text classification fine-tuning job
+
+# Job resource configuration
+resources:
+  nodes: 1
+  gpus_per_node: 1
+  gpu_type: "a40"
+  time_limit: "0:10:00"
+
+# Job metadata
+job_name: "hf-textcls-single"
+max_requeue: 2
+job_dir: "~/vec_jobs"
+
+# Trainer arguments
+trainer_kwargs:
+  lr: 5e-5
+  batch_size: 16
+  num_epochs: 2
+  save_steps: 100
+  eval_steps: 200
+  print_every: 50
