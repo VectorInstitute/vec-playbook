@@ -178,7 +178,7 @@ Last login: Mon Aug 18 07:28:24 2025 from 184.145.46.175
 ```
 
 
-Next, use the rsync command to copy files across to the Killarney cluster. In the following example, I'm copying the contents of a folder called `my_projects` to my Killarney home directory.
+Next, use the `rsync` command to copy files across to the Killarney cluster. In the following example, I'm copying the contents of a folder called `my_projects` to my Killarney home directory.
 
 
 ```
@@ -243,10 +243,8 @@ username@login01:~$ squeue -t PENDING
          505714 username     aip-acct base_ff_96_fra  PD 1-00:00:00     1   12 gres/gpu:h    256G  (Priority) 
          505717 username     aip-acct base_ff_128_fr  PD 1-00:00:00     1   12 gres/gpu:h    256G  (Priority) 
          505300 username     aip-acct vanilla_vq_ima  PD 3-00:00:00     1   10 gres/gpu:h     50G  (Resources)
+[...]
 ```
-
-
-          ...
 
 
 ## Submit a new Slurm job (sbatch)
@@ -275,6 +273,11 @@ module load python/3.12.4
 python3 -c 'print("Hello World")'
 ```
 
+Submit the job:
+
+```
+username@klogin02:~$ sbatch hello_world.sh
+```
 
 Note that the sbatch configurations all start with `#SBATCH`. The above script asks for 1 L40S GPU, 4 CPU cores, 32GB of memory and a one-hour hour time limit.
 
@@ -288,7 +291,6 @@ Note that the %j in output and error configuration tells Slurm to substitute the
 To get an interactive session, you must use srun see documentation here.
 
 A common configuration for interactive debugging is:
-
 
 ```
 srun --gres=gpu:l40s:1 --mem=32GB --time=2:00:00 --pty bash
@@ -395,6 +397,7 @@ username@kn135:~$ jupyter notebook --ip 0.0.0.0
         http://127.0.0.1:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
 
 You will need a VPN connection to access this notebook. Once you are connected to the VPN, visit the URL beginning with http://kn####, so in the example above this would be: http://kn135:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
+```
 
 
 # Software Environments
@@ -431,9 +434,11 @@ source some_env/bin/activate
 
 and it should show the following
 
+```
 (some_env) username@kn130:~$
+```
 
-Now you can pip install anything you need and it'll be contained in this environment.
+Now you can `pip install` anything you need and it will be contained in this environment.
 
 
 # Time Limits and Checkpoints
@@ -462,18 +467,8 @@ Slurm Scheduler: https://support.vectorinstitute.ai/slurm_fairshare
 FAQ: https://support.vectorinstitute.ai/FAQ%20about%20the%20cluster
 
 
-## Where to ask for help
+# Support
 
 For any cluster issues please email ops-help@vectorinstitute.ai.
 
 For engineering/checkpointing related issues please check out the #computing channel on slack. You may also ask quick cluster questions here.
-
-
-# Appendix: Questions For Ops Team
-
-
-
-* File system quotas? How much space do we have? How can I check how much I'm using?
-* How to access specific gpus? 
-* Example sbatch files?
-* 
