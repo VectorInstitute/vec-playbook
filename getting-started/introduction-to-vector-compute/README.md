@@ -11,6 +11,31 @@ The Alliance documentation provides lots of general information about accessing 
 
 Please read the [user account guide](https://support.vectorinstitute.ai/Killarney?action=AttachFile&do=view&target=User+Guide+to+Killarney+for+Vector+Researchers.pdf) for full information about getting a Killarney account.
 
+## Public Key Setup
+
+For SSH access, you need to add a public key in your Alliance Canada account.
+
+On the computer you'll be connecting from, generate a SSH key pair with the following command. When prompted, use the default file name and leave the passphrase empty.
+
+```
+ssh-keygen -t ed25519 -C "your_email@example.com"
+```
+
+Output the key into your terminal window:
+
+```
+cat ~/.ssh/id_ed25519.pub
+```
+
+The key will look something like the following. Copy it to your clipboard:
+
+```
+ssh-ed25519 AAAA5AA7OZOZ7NRB1acK54bB47h58N6AIEX4zDziR1r0nM41d3NCG0fgCArjUD45pr13578zo0z username@vectorinstitute.ai
+```
+
+Next, open the SSH Keys page in your Alliance account: [https://ccdb.alliancecan.ca/ssh_authorized_keys](https://ccdb.alliancecan.ca/ssh_authorized_keys). Paste your key into the SSH Key field, give it a name (typically the host name of the computer where you generated it) and hit Add Key.
+
+
 ## SSH Access
 
 From a terminal, use the `ssh` command to log onto the cluster via [killarney.alliancecan.ca](killarney.alliancecan.ca):
@@ -43,42 +68,9 @@ Success. Logging you in...
 username@klogin02:~$
 ```
 
-
 The hostname **killarney.alliancecan.ca** load balances ssh connections across the **klogin01**, **klogin02**, **klogin03** and **klogin04** machines. This provides for spreading out load and some redundancy.
 
 **NOTE:** These "klogin" nodes are shared across all users and do not have GPUs or a lot of compute power. Please do not run any training jobs or compile code here! In the following sections we will go through how to run your jobs on the cluster.
-
-
-## Public Key Setup
-
-To avoid entering a password every time you connect, you can optionally set up a SSH public key in your Alliance Canada account. 
-
-For some operations, such as migrating data from the Bon Echo (Vaughan) cluster, the SSH key is mandatory.
-
-On the computer you'll be connecting from, generate a SSH key pair with the following command. When prompted, use the default file name and leave the passphrase empty.
-
-```
-ssh-keygen -t ed25519 -C "your_email@example.com"
-```
-
-
-Output the key into your terminal window and output the key:
-
-
-```
-cat ~/.ssh/id_ed25519.pub
-```
-
-
-The key will look something like the following. Copy it to your clipboard:
-
-
-```
-ssh-ed25519 AAAAC3NzaC1lZDI1GTE5AA6AIEX4zziRB7OZOZ7NR58NUi3iLC0fgCArMe9KZyS8z6Dz username@vectorinstitute.ai
-```
-
-
-Next, open the SSH Keys page in your Alliance account: [https://ccdb.alliancecan.ca/ssh_authorized_keys](https://ccdb.alliancecan.ca/ssh_authorized_keys). Paste your key into the SSH Key field, give it a name (typically the host name of the computer where you generated it) and hit Add Key.
 
 
 # Killarney File System Intro
@@ -104,7 +96,7 @@ username@klogin02:~$ diskusage_report
 
 In addition to your home directory, you have a minimum of additional 250 GB scratch space (up to 2 TB, depending on your user level) available in the following location: `/scratch/$USER` or simply` $SCRATCH.`
 
-**Unlike your home directory, this scratch space is temporary. It will get automatically purged of files that have not been accessed in 60 days.**
+**⚠️ Unlike your home directory, this scratch space is temporary. It will get automatically purged of files that have not been accessed in 60 days.**
 
 A detailed description of the scratch purging policy is available on the Alliance Canada website: [https://docs.alliancecan.ca/wiki/Scratch_purging_policy](https://docs.alliancecan.ca/wiki/Scratch_purging_policy)
 
@@ -138,14 +130,14 @@ Similar to datasets, model weights are typically very large and can be shared am
 
 ## Training checkpoints
 
-Unlike the legacy Bon Echo (Vaughan) cluster, there is no dedicated checkpoint space in the Killarney cluster. Now that the $SCRATCH space has been greatly expanded, please use this for any training checkpoints.
+Unlike the legacy Bon Echo (Vaughan) cluster, there is no dedicated checkpoint space in the Killarney cluster. Now that the `$SCRATCH` space has been greatly expanded, please use this for any training checkpoints.
 
 
 # Migration from legacy Vaughan (Bon Echo) Cluster
 
-The easiest way to migrate data from the legacy Vaughan (Bon Echo) Cluster to Killarney is by usinghttps://support.vectorinstitute.ai/Killarney?action=AttachFile&do=view&target=User+Guide+to+Killarney+for+Vector+Researchers.pdfk rsync.
+The easiest way to migrate data from the legacy Vaughan (Bon Echo) Cluster to Killarney is by using a file transfer command (likely `rsync` or `scp`) from an SSH session.
 
-Start by connecting via shttps://support.vectorinstitute.ai/Killarney?action=AttachFile&do=view&target=User+Guide+to+Killarney+for+Vector+Researchers.pdfsh into the legacy Vaughan cluster:
+Start by connecting via https://support.vectorinstitute.ai/Killarney?action=AttachFile&do=view&target=User+Guide+to+Killarney+for+Vector+Researchers.pdfsh into the legacy Bon Echo (Vaughan) cluster:
 
 
 ```
@@ -177,9 +169,7 @@ If you forget your password, please visit our self-
 Last login: Mon Aug 18 07:28:24 2025 from 184.145.46.175
 ```
 
-
 Next, use the `rsync` command to copy files across to the Killarney cluster. In the following example, I'm copying the contents of a folder called `my_projects` to my Killarney home directory.
-
 
 ```
 username@v4:~$ cd ~/my_projects
@@ -230,9 +220,7 @@ username@klogin01:~$ squeue
 [...]
 ```
 
-
 There are many different options for the squeue command. For example, to view jobs that are pending and waiting to start running, use the `-t PENDING` flag:
-
 
 ```
 username@login01:~$ squeue -t PENDING
@@ -288,7 +276,7 @@ Note that the %j in output and error configuration tells Slurm to substitute the
 
 ## Interactive sessions (srun)
 
-To get an interactive session, you must use srun see documentation here.
+To get an interactive session, you must use `srun` (https://slurm.schedmd.com/srun.html)
 
 A common configuration for interactive debugging is:
 
@@ -312,9 +300,22 @@ After you see $USER@kn###, you can run your script interactively. It is also pos
 
 ## Accessing specific GPUs
 
+Our Killarney has both NVIDIA L40S and H100 GPUs available. To request a specific GPU type, use the `--gres=gpu` flag, for example:
 
+```
+# Request 2x L40S gpus
+username@klogin01:/scratch$ srun --gres=gpu:l40s:2 --mem=32G --time=5:00 --pty bash
+srun: job 581665 queued and waiting for resources
+srun: job 581665 has been allocated resources
+username@kn131:/scratch$ exit
+exit
 
-When SLURM schedules our jobs, it will give us an unique job ID. So it is possible to keep track of your jobs by querying SLURM.
+# Request 1x H100 gpu
+username@klogin01:/scratch$ srun --gres=gpu:h100:1 --mem=32G --time=5:00 --pty bash
+srun: job 581667 queued and waiting for resources
+srun: job 581667 has been allocated resources
+username@kn178:/scratch$
+```
 
 
 ## View cluster resource utilization (sinfo)
@@ -383,7 +384,7 @@ Now start the notebook:
 ```
 username@kn135:~$ jupyter notebook --ip 0.0.0.0
 [...]
-[I 2025-08-20 11:52:22.038 ServerApp] Serving notebooks from local directory: /scratch/markcoat/slurm/helloworld
+[I 2025-08-20 11:52:22.038 ServerApp] Serving notebooks from local directory: /scratch/username/slurm/helloworld
 [I 2025-08-20 11:52:22.038 ServerApp] Jupyter Server 2.16.0 is running at:
 [I 2025-08-20 11:52:22.038 ServerApp] http://kn135:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
 [I 2025-08-20 11:52:22.038 ServerApp]     http://127.0.0.1:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
@@ -391,7 +392,7 @@ username@kn135:~$ jupyter notebook --ip 0.0.0.0
 [C 2025-08-20 11:52:22.054 ServerApp] 
     
     To access the server, open this file in a browser:
-        file:///home/markcoat/.local/share/jupyter/runtime/jpserver-942891-open.html
+        file:///home/username/.local/share/jupyter/runtime/jpserver-942891-open.html
     Or copy and paste one of these URLs:
         http://kn135:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
         http://127.0.0.1:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
@@ -441,17 +442,42 @@ and it should show the following
 Now you can `pip install` anything you need and it will be contained in this environment.
 
 
-# Time Limits and Checkpoints
+# Time Limits
 
-The cluster uses time limits to ensure fair access to resources.
+The Killarney cluster uses time limits to ensure fair access to resources. These are groups into tiers (otherwise known as partitions) based on time length and resource availability.
 
-Preemption allows users to run high priority jobs (jobs in the deadline or high QOS) as soon as possible. If the cluster is full and there is no room for a job using one of these QOS to start, it will select the lowest priority job (or combination of jobs) that would allow the high priority job to run, that has run for at least two hours (the default PreemptExemptTime) and stop it, putting it back into the queue, to make room for the high priority job to start.
+## Tiers
 
-All jobs in our Slurm cluster have a time limit, after which they will get stopped. For longer running jobs which need more than a few hours, the Vaughan_slurm_changes document describes how to automatically restart these.
+There are 5 basic time tiers for cluster resources. When submitting a job, you need to specify a time limit, using the `--time=D-HH:MM:SS` argument. For example, ask for 1 hour using `--time=1:00:00`.
 
-In order to avoid losing your work when your job is preempted, you will need to implement checkpoints - periodic snapshots of your work that you load from so you can stop and resume without much lost work.
+Your job will get automatically assigned to the corrent partition depending on your request request.
 
-Please see Checkpoint Example for more information.
+To view the various tiers:
+
+```
+username@klogin01:~$ sinfo --summarize
+PARTITION       AVAIL  TIMELIMIT   NODES(A/I/O/T) NODELIST
+gpubase_h100_b1    up    3:00:00         9/0/1/10 kn[169-178]
+gpubase_h100_b2    up   12:00:00          8/0/0/8 kn[169-176]
+gpubase_h100_b3    up 1-00:00:00          6/0/0/6 kn[171-176]
+gpubase_h100_b4    up 3-00:00:00          4/0/0/4 kn[169-170,172,178]
+gpubase_h100_b5    up 7-00:00:00          1/0/1/2 kn[171,177]
+gpubase_l40s_b1    up    3:00:00     140/26/2/168 kn[001-168]
+gpubase_l40s_b2    up   12:00:00      125/0/1/126 kn[001-126]
+gpubase_l40s_b3    up 1-00:00:00       56/26/2/84 kn[001-042,127-168]
+gpubase_l40s_b4    up 3-00:00:00        42/0/0/42 kn[043-084]
+gpubase_l40s_b5    up 7-00:00:00        17/0/0/17 kn[085-101]
+```
+
+## Automatic Restarts
+
+All jobs in our Slurm cluster have a time limit, after which they will get stopped. For longer running jobs which need more than a few hours, the [Vaughan Slurm Changes](https://support.vectorinstitute.ai/Computing?action=AttachFile&do=view&target=Vector+Vaughan+HPC+Changes+FAQ+2023.pdf) document describes how to automatically restart these.
+
+## Checkpoints
+
+In order to avoid losing your work when your job exits, you will need to implement checkpoints - periodic snapshots of your work that you load from so you can stop and resume without much lost work.
+
+On the legacy Bon Echo cluster, there was a dedicated checkpoint space in the file system for checkpoints. **⚠️ In Killarney, there is no dedicated checkpoint space.** Users are expected to manage their own checkpoints under their `$SCRATCH` folder.
 
 
 # Useful Links and Resources
@@ -471,4 +497,4 @@ FAQ: https://support.vectorinstitute.ai/FAQ%20about%20the%20cluster
 
 For any cluster issues please email ops-help@vectorinstitute.ai.
 
-For engineering/checkpointing related issues please check out the #computing channel on slack. You may also ask quick cluster questions here.
+For engineering/checkpointing related issues please check out the #computing channel on Slack.
