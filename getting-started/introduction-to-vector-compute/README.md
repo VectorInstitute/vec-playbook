@@ -1,7 +1,36 @@
 # Introduction to Vector Compute
 
-This guide covers important details and examples for accessing and using Vector's research compute environment. As of September 2025, our main research environment is the [Killarney cluster](https://docs.alliancecan.ca/wiki/Killarney) 
+This guide covers important details and examples for accessing and using Vector's research compute environment. As of September 2025, our main research environment is the [Killarney cluster](https://docs.alliancecan.ca/wiki/Killarney)
 
+# Table of Contents
+
+- [Logging onto Killarney](#logging-onto-killarney)
+  - [Getting an Account](#getting-an-account)
+  - [Public Key Setup](#public-key-setup)
+  - [SSH Access](#ssh-access)
+- [Killarney File System Intro](#killarney-file-system-intro)
+  - [Home directories](#home-directories)
+  - [Scratch space](#scratch-space)
+  - [Shared projects](#shared-projects)
+  - [Shared datasets](#shared-datasets)
+  - [Shared model weights](#shared-model-weights)
+  - [Training checkpoints](#training-checkpoints)
+- [Migration from legacy Vaughan (Bon Echo) Cluster](#migration-from-legacy-vaughan-bon-echo-cluster)
+- [Killarney GPU resources](#killarney-gpu-resources)
+- [Using Slurm](#using-slurm)
+  - [View jobs in the Slurm cluster (squeue)](#view-jobs-in-the-slurm-cluster-squeue)
+  - [Submit a new Slurm job (sbatch)](#submit-a-new-slurm-job-sbatch)
+  - [Interactive sessions (srun)](#interactive-sessions-srun)
+  - [Accessing specific GPUs](#accessing-specific-gpus)
+  - [View cluster resource utilization (sinfo)](#view-cluster-resource-utilization-sinfo)
+  - [Jupyter notebooks](#jupyter-notebooks)
+- [Software Environments](#software-environments)
+- [Time Limits](#time-limits)
+  - [Tiers](#tiers)
+  - [Automatic Restarts](#automatic-restarts)
+  - [Checkpoints](#checkpoints)
+- [Useful Links and Resources](#useful-links-and-resources)
+- [Support](#support)
 
 # Logging onto Killarney
 
@@ -87,10 +116,8 @@ Home directories have 50 GB of storage space. To check the amount of free space 
 username@klogin02:~$ diskusage_report
                             Description                Space         # of files
                   /home (user username)         0  B/  50GiB          13 / 500K
-               /scratch (user username)        51GiB/2048GiB         341K/  10M
+               /scratch (user username)         51GiB/256GiB         341K/  10M
 ```
-
-
 
 ## Scratch space
 
@@ -141,7 +168,7 @@ Start by connecting via https://support.vectorinstitute.ai/Killarney?action=Atta
 
 
 ```
-username@mark-desktop:~$ ssh v.vectorinstitute.ai
+username@my-desktop:~$ ssh v.vectorinstitute.ai
 Password:
 Duo two-factor login for username
 
@@ -300,7 +327,7 @@ After you see $USER@kn###, you can run your script interactively. It is also pos
 
 ## Accessing specific GPUs
 
-Our Killarney has both NVIDIA L40S and H100 GPUs available. To request a specific GPU type, use the `--gres=gpu` flag, for example:
+The Killarney cluster has both NVIDIA L40S and H100 GPUs available. To request a specific GPU type, use the `--gres=gpu` flag, for example:
 
 ```
 # Request 2x L40S gpus
@@ -450,7 +477,7 @@ The Killarney cluster uses time limits to ensure fair access to resources. These
 
 There are 5 basic time tiers for cluster resources. When submitting a job, you need to specify a time limit, using the `--time=D-HH:MM:SS` argument. For example, ask for 1 hour using `--time=1:00:00`.
 
-Your job will get automatically assigned to the corrent partition depending on your request request.
+Your job will get automatically assigned to the correct partition depending on your request.
 
 To view the various tiers:
 
