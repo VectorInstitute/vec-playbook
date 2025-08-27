@@ -1,3 +1,3 @@
-"""Starters for LLM fine-tuning tasks."""
+"""Starters for VLM fine-tuning tasks."""
 
 from .text_classification import HFTextClassificationTrainer

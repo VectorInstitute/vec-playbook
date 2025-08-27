@@ -1,0 +1,30 @@
+# Default config chain
+defaults:
+  - user                    # each researcher edits configs/user.yaml
+  - starter: basic_mlp      # pick which starter to run
+  - compute: killarney/l40s_1x
+
+# Job metadata
+experiment_name: ${now:%Y%m%d}-${now:%H%M%S}
+work_dir: ${oc.env:HOME}/vec_jobs/${experiment_name}
+
+# Hydra + Submitit launcher
+hydra:
+  run:
+    dir: ${work_dir}
+  sweep:
+    dir: ${work_dir}
+  launcher:
+    class: submitit_slurm.SlurmLauncher
+    params:
+      timeout_min: ${compute.timeout_min}
+      gpus_per_node: ${compute.gpus_per_node}
+      tasks_per_node: 1
+      cpus_per_task: ${compute.cpus_per_task}
+      mem_gb: ${compute.mem_gb}
+      partition: ${slurm.partition}
+      max_num_timeout: 2          # allow up to 2 requeues
+      additional_parameters:
+        account: ${slurm.account}
+        gres: ${compute.gres}
+        requeue: ""               # request Slurm job be requeue-able

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Single job launcher using experiment config file
 
-TRAINER="starters.llm_fine_tuning.text_classification.trainer:HFTextClassificationTrainer"
+TRAINER="starters.vlm_fine_tuning.image_captioning.trainer:ImageCaptioningTrainer"
 CONFIG_FILE="$(dirname "$0")/config.yaml"
 
 echo "Launching single job with config: $CONFIG_FILE"
