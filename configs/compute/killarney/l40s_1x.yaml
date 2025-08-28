@@ -1,8 +1,0 @@
-cluster: killarney
-gpu_type: l40s
-gpus_per_node: 1
-time_limit: "1:00:00"
-timeout_min: 60
-mem_gb: 32
-cpus_per_task: 4
-gres: gpu:${.gpu_type}:${.gpus_per_node}
