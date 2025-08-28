@@ -1,0 +1,4 @@
+user:
+  slurm:
+    additional_parameters:
+      qos: m2

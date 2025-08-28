@@ -3,12 +3,8 @@ requires = ["setuptools>=65", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-# You only need the starters code packaged; "scripts" can run from source.
-include = ["starters*"]
-
-# Include YAML configs that live next to runner.py files
-[tool.setuptools.package-data]
-"starters" = ["**/*.yaml"]
+where = ["templates/src"]
+include = ["*"]
 
 [project]
 name = "vec-playbook"
@@ -25,28 +21,9 @@ dependencies = [
     "datasets>=2.16.0,<3.6.0",
     "accelerate>=0.26.0,<1.0.0",
     "pyarrow==16.1.0",
+    "ruff>=0.1.0,<1.0.0",
+    "pre-commit>=3.0.0,<4.0.0",
 ]
-
-[project.optional-dependencies]
-# Install these when you use those starters
-vlm = [
-    "torchvision>=0.15,<0.20",
-    "pillow>=9.0",
-]
-rl = [
-    "gymnasium>=0.28,<1.0",
-    "numpy>=1.23",
-]
-
-dev = [
-    "pre-commit>=3.0.0",
-    "ruff>=0.1.0",
-]
-
-[project.scripts]
-# Optional: a convenience CLI so users can run `vec-playbook-train ...`
-# Comment out if you prefer `python -m scripts.train`.
-vec-playbook-train = "scripts.train:main"
 
 [tool.ruff]
 include = ["*.py", "pyproject.toml", "*.ipynb"]
