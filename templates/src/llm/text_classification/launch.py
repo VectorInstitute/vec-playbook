@@ -17,7 +17,13 @@ _CONFIG_PATH = os.path.normpath(
 def main(cfg: DictConfig):
     """Hydra entrypoint that merges local config and runs the Trainer."""
     local_cfg = OmegaConf.load(os.path.join(os.path.dirname(__file__), "config.yaml"))
+    OmegaConf.set_struct(cfg, False)
     cfg = OmegaConf.merge(cfg, local_cfg)
+
+    if "trainer" in cfg:
+        trainer_cfg = cfg.trainer
+        cfg = OmegaConf.merge(cfg, trainer_cfg)
+        del cfg.trainer
 
     text_classification_trainer = TextClassificationTrainer()
     return text_classification_trainer(cfg)

@@ -23,5 +23,6 @@ hydra:
     cpus_per_task: ${compute.cpus_per_task}
     mem_gb: ${compute.mem_gb}
     partition: ${compute.slurm.partition}       # <-- expects compute.slurm.partition
+    account: ${user.slurm.account}
     max_num_timeout: 2
     additional_parameters: ${oc.select:user.slurm.additional_parameters,{}}

@@ -1,6 +1,6 @@
-"""Single-GPU demo trainer for a simple feed-forward network (no checkpointing)."""
+"""Simple MLP trainer without checkpointing."""
 
-from .trainer import SimpleTrainerNoCheckpoint
+from .train import SimpleMLPTrainer
 
 
-__all__ = ["SimpleTrainerNoCheckpoint"]
+__all__ = ["SimpleMLPTrainer"]

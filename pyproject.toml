@@ -21,6 +21,7 @@ dependencies = [
     "datasets>=2.16.0,<3.6.0",
     "accelerate>=0.26.0,<1.0.0",
     "pyarrow==16.1.0",
+    "pillow>=10.0.0,<11.0.0",
     "ruff>=0.1.0,<1.0.0",
     "pre-commit>=3.0.0,<4.0.0",
 ]

@@ -55,13 +55,13 @@ class TextClassificationTrainer(submitit.helpers.Checkpointable):
             num_train_epochs=getattr(cfg, "num_train_epochs", 2),
             per_device_train_batch_size=getattr(cfg, "per_device_train_batch_size", 16),
             per_device_eval_batch_size=getattr(cfg, "per_device_eval_batch_size", 32),
-            evaluation_strategy="steps",
+            eval_strategy="steps",
             eval_steps=getattr(cfg, "eval_steps", 200),
             logging_steps=getattr(cfg, "logging_steps", 50),
             learning_rate=getattr(cfg, "learning_rate", 5e-5),
             weight_decay=getattr(cfg, "weight_decay", 0.01),
             save_strategy="steps",
-            save_steps=getattr(cfg, "save_steps", 100),  # checkpoints every N steps
+            save_steps=getattr(cfg, "save_steps", 100),
             save_total_limit=getattr(cfg, "save_total_limit", 2),
             report_to=[],
         )

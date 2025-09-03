@@ -1,1 +1,1 @@
-"""Multi-node DistributedDataParallel demo trainer for a simple feed-forward network."""
+"""Distributed MLP trainer using PyTorch DDP."""
