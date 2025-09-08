@@ -24,6 +24,8 @@ dependencies = [
     "pillow>=10.0.0,<11.0.0",
     "ruff>=0.1.0,<1.0.0",
     "pre-commit>=3.0.0,<4.0.0",
+    "pydantic>=2.11.7",
+    "rich>=14.1.0",
 ]
 
 [tool.ruff]
@@ -38,7 +40,7 @@ docstring-code-format = true
 [tool.ruff.lint]
 select = ["A","B","COM","C4","RET","SIM","ICN","Q","RSE","D","E","F","I","W","N","ERA","PL"]
 fixable = ["A","B","COM","C4","RET","SIM","ICN","Q","RSE","D","E","F","I","W","N","ERA","PL"]
-ignore = ["B905","E501","D203","D213","PLR2004","PLR0913","COM812"]
+ignore = ["B905","E501","D203","D213","PLC0415","PLR2004","PLR0913","COM812", "ERA001"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402","F401","F403","F811"]
