@@ -10,6 +10,8 @@ In this example, we train for a single epoch on a single node using 2x L40S GPUs
 Start by building your virtual environment under the `imagenet-venv` folder:
 ```
 python3 -m venv imagenet-venv
+source imagenet-venv
+python3 -m pip install -r requirements.txt
 ```
 
 Download the example script:
