@@ -1,5 +1,4 @@
-
-# Vector Killarney Cluster: Imagenet Example
+# Killarney Slurm Examples: Imagenet Training
 
 This is a simple job for training the a model using the Imagenet dataset, using a simple example provided by PyTorch (https://github.com/pytorch/examples/blob/main/imagenet/main.py).
 
