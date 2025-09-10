@@ -215,7 +215,7 @@ sending incremental file list
 
 # Killarney GPU resources
 
-There are two main types of GPU resources on the Killarney cluster: capacity GPUs (NVIDIA L40S) and high-performance GPUs (NVIDIA H100).
+There are two main types of GPU resources on the Killarney cluster: capacity GPUs (NVIDIA L40S) and high-performance GPUs (NVIDIA H100). 
 
 A full description of compute resources is available on the Alliance website: [https://docs.alliancecan.ca/wiki/Killarney#Killarney_hardware_specifications](https://docs.alliancecan.ca/wiki/Killarney#Killarney_hardware_specifications)
 
@@ -224,7 +224,7 @@ Since the cluster has many users and limited resources, we use the Slurm job sch
 
 # Using Slurm
 
-The Alliance documentation provides lots of general information about submitting jobs using the Slurm job scheduler: [https://docs.alliancecan.ca/wiki/Running_jobs](https://docs.alliancecan.ca/wiki/Running_jobs)
+The Alliance documentation provides lots of general information about submitting jobs using the Slurm job scheduler: [https://docs.alliancecan.ca/wiki/Running_jobs](https://docs.alliancecan.ca/wiki/Running_jobs)	
 
 
 ## View jobs in the Slurm cluster (squeue)
@@ -234,15 +234,15 @@ To view all the jobs currently in the cluster, either running, pending or failed
 
 ```
 username@klogin01:~$ squeue
-          JOBID     USER      ACCOUNT           NAME  ST  TIME_LEFT NODES CPUS TRES_PER_N MIN_MEM NODELIST (REASON)
-         505480 username     aip-acct        jupyter   R      41:31     1    4 gres/gpu:l    300G kn141 (None)
-       504615_8 username     aip-acct         My_JOB   R      50:05     1   32 gres/gpu:l     64G kn054 (None)
-       504615_9 username     aip-acct         My_JOB   R      53:07     1   32 gres/gpu:l     64G kn038 (None)
-      504615_10 username     aip-acct         My_JOB   R      54:07     1   32 gres/gpu:l     64G kn039 (None)
-         499132 username     aip-acct SFBDF_cifar10_   R      54:45     1   32 gres/gpu:3     60G kn135 (None)
-         505622 username     aip-acct        tus-rec   R      58:39     1   10 gres/gpu:l    128G kn001 (None)
-      504615_11 username     aip-acct         My_JOB   R    1:00:48     1   32 gres/gpu:l     64G kn041 (None)
-      504615_12 username     aip-acct         My_JOB   R    1:03:37     1   32 gres/gpu:l     64G kn008 (None)
+          JOBID     USER      ACCOUNT           NAME  ST  TIME_LEFT NODES CPUS TRES_PER_N MIN_MEM NODELIST (REASON) 
+         505480 username     aip-acct        jupyter   R      41:31     1    4 gres/gpu:l    300G kn141 (None) 
+       504615_8 username     aip-acct         My_JOB   R      50:05     1   32 gres/gpu:l     64G kn054 (None) 
+       504615_9 username     aip-acct         My_JOB   R      53:07     1   32 gres/gpu:l     64G kn038 (None) 
+      504615_10 username     aip-acct         My_JOB   R      54:07     1   32 gres/gpu:l     64G kn039 (None) 
+         499132 username     aip-acct SFBDF_cifar10_   R      54:45     1   32 gres/gpu:3     60G kn135 (None) 
+         505622 username     aip-acct        tus-rec   R      58:39     1   10 gres/gpu:l    128G kn001 (None) 
+      504615_11 username     aip-acct         My_JOB   R    1:00:48     1   32 gres/gpu:l     64G kn041 (None) 
+      504615_12 username     aip-acct         My_JOB   R    1:03:37     1   32 gres/gpu:l     64G kn008 (None) 
          504859 username     aip-acct         sbatch   R    1:06:59     1   16 gres/gpu:l     64G kn034 (None)
 [...]
 ```
@@ -251,12 +251,12 @@ There are many different options for the squeue command. For example, to view jo
 
 ```
 username@login01:~$ squeue -t PENDING
-          JOBID     USER      ACCOUNT           NAME  ST  TIME_LEFT NODES CPUS TRES_PER_N MIN_MEM NODELIST (REASON)
-  505518_[5-48] username     aip-acct         My_JOB  PD    4:00:00     1   32 gres/gpu:l     64G  (Resources)
-         505759 username     aip-acct grpg_qwen3_4b_  PD 1-00:00:00     1    8 gres/gpu:h     32G  (Resources)
-         505739 username     aip-acct lora_with_rgb_  PD   16:00:00     1   12 gres/gpu:h    256G  (Priority)
-         505714 username     aip-acct base_ff_96_fra  PD 1-00:00:00     1   12 gres/gpu:h    256G  (Priority)
-         505717 username     aip-acct base_ff_128_fr  PD 1-00:00:00     1   12 gres/gpu:h    256G  (Priority)
+          JOBID     USER      ACCOUNT           NAME  ST  TIME_LEFT NODES CPUS TRES_PER_N MIN_MEM NODELIST (REASON) 
+  505518_[5-48] username     aip-acct         My_JOB  PD    4:00:00     1   32 gres/gpu:l     64G  (Resources) 
+         505759 username     aip-acct grpg_qwen3_4b_  PD 1-00:00:00     1    8 gres/gpu:h     32G  (Resources) 
+         505739 username     aip-acct lora_with_rgb_  PD   16:00:00     1   12 gres/gpu:h    256G  (Priority) 
+         505714 username     aip-acct base_ff_96_fra  PD 1-00:00:00     1   12 gres/gpu:h    256G  (Priority) 
+         505717 username     aip-acct base_ff_128_fr  PD 1-00:00:00     1   12 gres/gpu:h    256G  (Priority) 
          505300 username     aip-acct vanilla_vq_ima  PD 3-00:00:00     1   10 gres/gpu:h     50G  (Resources)
 [...]
 ```
@@ -416,8 +416,8 @@ username@kn135:~$ jupyter notebook --ip 0.0.0.0
 [I 2025-08-20 11:52:22.038 ServerApp] http://kn135:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
 [I 2025-08-20 11:52:22.038 ServerApp]     http://127.0.0.1:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
 [I 2025-08-20 11:52:22.038 ServerApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
-[C 2025-08-20 11:52:22.054 ServerApp]
-
+[C 2025-08-20 11:52:22.054 ServerApp] 
+    
     To access the server, open this file in a browser:
         file:///home/username/.local/share/jupyter/runtime/jpserver-942891-open.html
     Or copy and paste one of these URLs:
@@ -430,7 +430,7 @@ You will need a VPN connection to access this notebook. Once you are connected t
 
 # Software Environments
 
-The cluster comes with preinstalled software environments called **modules**. These will allow you to access many different versions of Python, VS Code Server, RStudio Server, NodeJS and many others.
+The cluster comes with preinstalled software environments called **modules**. These will allow you to access many different versions of Python, VS Code Server, RStudio Server, NodeJS and many others. 
 
 To see the available preinstalled environments, run:
 
