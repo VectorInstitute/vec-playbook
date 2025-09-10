@@ -1,0 +1,28 @@
+defaults:
+  - user
+  - compute: vaughan/a40_1x
+  - requeue: "off"
+  - _self_
+  - override hydra/launcher: submitit_slurm
+
+experiment_name: ${now:%Y%m%d}-${now:%H%M%S}
+
+paths:
+  work_root: ${oc.env:HOME}
+work_dir: ${paths.work_root}/vec_jobs/${experiment_name}
+
+hydra:
+  run:
+    dir: ${work_dir}
+  sweep:
+    dir: ${work_dir}
+  launcher:
+    timeout_min: ${compute.timeout_min}
+    gpus_per_node: ${compute.gpus_per_node}
+    tasks_per_node: 1
+    cpus_per_task: ${compute.cpus_per_task}
+    mem_gb: ${compute.mem_gb}
+    partition: ${compute.slurm.partition}       # <-- expects compute.slurm.partition
+    account: ${user.slurm.account}
+    max_num_timeout: 2
+    additional_parameters: ${oc.select:user.slurm.additional_parameters,{}}

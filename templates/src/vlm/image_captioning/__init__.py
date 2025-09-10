@@ -1,0 +1,1 @@
+"""VLM image captioning template."""

@@ -205,3 +205,30 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Pre-commit
+.pre-commit-config.yaml.bak
+.pre-commit-config.yaml.old
+
+# Cache directories
+.cache/
+cache/
+
+# Pre-commit cache
+.pre-commit-cache/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

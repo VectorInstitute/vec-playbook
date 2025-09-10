@@ -1,0 +1,8 @@
+trainer:
+  input_dim: 10
+  hidden_dim: 64
+  num_classes: 3
+  batch_size: 32  # Per-GPU batch size
+  learning_rate: 1e-3
+  num_epochs: 1000
+  seed: 42

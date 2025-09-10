@@ -1,0 +1,4 @@
+hydra:
+  launcher:
+    additional_parameters:
+      no-requeue: ""
