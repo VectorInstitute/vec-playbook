@@ -1,4 +1,4 @@
-cluster: vaughan
+cluster: bon_echo
 gpu_type: a40
 gpus_per_node: 2
 time_limit: "2:00:00"

@@ -1,6 +1,6 @@
 defaults:
   - user
-  - compute: vaughan/a40_1x
+  - compute: bon_echo/a40_1x
   - requeue: "off"
   - _self_
   - override hydra/launcher: submitit_slurm

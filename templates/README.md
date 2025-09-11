@@ -1,6 +1,6 @@
 # Templates
 
-Templates for training ML models on Vaughan and Killarney clusters using Hydra and Submitit.
+Templates for training ML models on Bon Echo and Killarney clusters using Hydra and Submitit.
 
 ## Layout
 
@@ -40,7 +40,7 @@ slurm:
 ```
 
 4) Pick a compute preset:
-- `templates/configs/compute/vaughan/*` (A40, A100)
+- `templates/configs/compute/bon_echo/*` (A40, A100)
 - `templates/configs/compute/killarney/*` (L40S, H100)
 
 ## Running Templates
@@ -55,11 +55,11 @@ slurm:
 
 ### Single Runs (Single Parameter Set)
 ```bash
-uv run python -m mlp.single_not_checkpointable.launch compute=vaughan/a40_1x requeue=off --multirun
-uv run python -m mlp.single.launch compute=vaughan/a40_1x requeue=off --multirun
-uv run python -m mlp.ddp.launch compute=vaughan/a40_2x requeue=off --multirun  # Multi-GPU
-uv run python -m llm.text_classification.launch compute=vaughan/a40_1x requeue=off --multirun
-uv run python -m vlm.image_captioning.launch compute=vaughan/a40_1x requeue=off --multirun
+uv run python -m mlp.single_not_checkpointable.launch compute=bon_echo/a40_1x requeue=off --multirun
+uv run python -m mlp.single.launch compute=bon_echo/a40_1x requeue=off --multirun
+uv run python -m mlp.ddp.launch compute=bon_echo/a40_2x requeue=off --multirun  # Multi-GPU
+uv run python -m llm.text_classification.launch compute=bon_echo/a40_1x requeue=off --multirun
+uv run python -m vlm.image_captioning.launch compute=bon_echo/a40_1x requeue=off --multirun
 ```
 
 **Note**: Hydra will wait for job completion before returning. For long training jobs, use tmux or run in background.
@@ -70,17 +70,17 @@ uv run python -m vlm.image_captioning.launch compute=vaughan/a40_1x requeue=off 
 uv run python -m mlp.single.launch \
   learning_rate=1e-2,1e-3,1e-4 \
   hidden_dim=64,128,256 \
-  compute=vaughan/a40_1x --multirun
+  compute=bon_echo/a40_1x --multirun
 
 uv run python -m llm.text_classification.launch \
   learning_rate=1e-3,1e-4,1e-5 \
   per_device_train_batch_size=16,32 \
-  compute=vaughan/a40_1x --multirun
+  compute=bon_echo/a40_1x --multirun
 
 uv run python -m vlm.image_captioning.launch \
   learning_rate=1e-4,1e-5,1e-6 \
   batch_size=8,16,32 \
-  compute=vaughan/a40_1x --multirun
+  compute=bon_echo/a40_1x --multirun
 ```
 ### Practical Patterns for Long Jobs
 
@@ -90,7 +90,7 @@ uv run python -m vlm.image_captioning.launch \
 tmux new-session -s my_training
 
 # Run your job/sweep inside tmux
-uv run python -m llm.text_classification.launch compute=vaughan/a40_1x --multirun
+uv run python -m llm.text_classification.launch compute=bon_echo/a40_1x --multirun
 
 # Detach with Ctrl+B, D (can close laptop/disconnect)
 # Later reattach with: tmux attach -s my_training
