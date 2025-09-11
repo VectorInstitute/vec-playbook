@@ -1,6 +1,6 @@
 # vec-playbook
 
-Starter repository for researchers at Vector Institute to get started with Vaughan and Killarney clusters.
+Starter repository for researchers at Vector Institute to get started with Bon Echo and Killarney clusters.
 
 This repo provides:
 - **Getting Started docs** with introductions to using Vector compute clusters.
