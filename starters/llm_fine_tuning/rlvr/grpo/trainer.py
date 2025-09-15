@@ -15,8 +15,13 @@ uv run starters/llm_fine_tuning/rlvr/grpo/trainer.py \
 """
 
 import argparse
+import asyncio
 import logging
+from typing import Literal, Sequence
 
+import agents
+import numpy as np
+import openai
 import torch
 from rich.progress import track
 from torch.nn.functional import softmax
@@ -26,14 +31,22 @@ from transformers import (
     PreTrainedModel,
 )
 
+from starters.llm_fine_tuning.rlvr.agents.examples import weather_agent
 from starters.llm_fine_tuning.rlvr.grpo.data_types import (
     AdvantageData,
     BatchForInference,
     GRPOData,
     PerTokenProbs,
-    RewardDetail,
+    RewardDetailTokenized,
 )
 from starters.llm_fine_tuning.rlvr.grpo.grpo import optimize_grpo_one_epoch
+from starters.llm_fine_tuning.rlvr.grpo.rollout_generation import (
+    GRPORollout,
+    RewardDetails,
+    RLVRDataItem,
+    RLVREvaluator,
+    eval_agent,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -82,6 +95,31 @@ def get_per_token_probs(
     )
 
 
+async def roll_out(
+    data: Sequence[RLVRDataItem],
+    client: "openai.AsyncOpenAI",
+    model_name: str,
+    semaphore_rollout: "asyncio.Semaphore",
+    semaphore_llm_judge: "asyncio.Semaphore",
+) -> list[RewardDetails]:
+    """Rollout online to get reward details, not yet tokenized."""
+    example_agent_config = agents.RunConfig(
+        model=agents.OpenAIChatCompletionsModel(model=model_name, openai_client=client)
+    )
+    evaluator = RLVREvaluator(
+        eval_agent,
+        agent_run_config=example_agent_config,
+        semaphore=semaphore_llm_judge,
+    )
+
+    rollout_generator = GRPORollout(weather_agent, evaluator=evaluator)
+    return await rollout_generator.generate(
+        data=data,
+        agent_run_config=example_agent_config,
+        semaphore=semaphore_rollout,
+    )
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--base_model", required=True)
 parser.add_argument("--kl_ref_model", required=True)
@@ -90,82 +128,92 @@ parser.add_argument(
     "--bsz_inference", type=int, default=16, help="batch size for getting pi_ref"
 )
 parser.add_argument("--bsz_train", type=int, default=8, help="batch size for backprop")
+parser.add_argument("--concurrency_rollout", type=int, default=36)
+parser.add_argument("--concurrency_llm_judge", type=int, default=36)
 
-
-# def parameter_update(model: AutoModelForCausalLM, advantage_batch: AdvantageBatch)
-
+example_data = [
+    RLVRDataItem(query="Weather in Shanghai", target="28 degrees Celsius, clear"),
+    RLVRDataItem(
+        query="Weather in Vancouver", target="-10 degrees Celsius, heavy snow"
+    ),
+]
+example_dataset: dict[Literal["train", "test"], Sequence[RLVRDataItem]] = {
+    "train": example_data,
+    "test": example_data,
+}
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     logger.info(f"Tokenizer: {tokenizer}")
-    example_reward_details = [
-        RewardDetail.from_messages(
-            messages=[
-                {"role": "system", "content": "Example system instructions."},
-                {"role": "user", "content": "Example user message."},
-                {"role": "assistant", "content": _message},
-            ],
-            reward=_reward,
-            tokenizer=tokenizer,
+    semaphore_rollout = asyncio.Semaphore(args.concurrency_rollout)
+    semaphore_llm_judge = asyncio.Semaphore(args.concurrency_llm_judge)
+
+    for _step in range(72):
+        # Generate on-policy rollouts and rewards- not tokenized yet.
+        # TODO: replace client and model_name with OpenAI-compatible vec-inf wrapper.
+        advantage_data = {
+            _split: AdvantageData.from_list_of_rewards(
+                [
+                    RewardDetailTokenized.from_messages(
+                        _detail.rollout.messages,
+                        reward=_detail.score,
+                        tokenizer=tokenizer,
+                    )
+                    for _detail in asyncio.run(
+                        roll_out(
+                            data=_data,
+                            client=openai.AsyncOpenAI(api_key="EMPTY"),
+                            model_name="Qwen3-0.6B",
+                            semaphore_rollout=semaphore_rollout,
+                            semaphore_llm_judge=semaphore_llm_judge,
+                        )
+                    )
+                ]
+            )
+            for _split, _data in example_dataset.items()
+        }
+        eval_advantage = np.mean(advantage_data["test"]._group_rewards()).item()
+        print(f"Step {_step}, eval_advantage: {eval_advantage:.3f}")
+
+        device = torch.device("cuda:0")
+
+        logger.info("Loading kl_ref weights")
+        kl_ref_model = AutoModelForCausalLM.from_pretrained(args.kl_ref_model)
+        logger.info("Loading kl_ref weights to CUDA.")
+        kl_ref_model = kl_ref_model.to(device)
+
+        per_token_probs_ref = sum(
+            get_per_token_probs(_batch, kl_ref_model)
+            for _batch in track(
+                advantage_data["train"].get_iterator_for_inference(batch_size=5),
+                description="Inference: pi_ref",
+            )
         )
-        for _reward, _message in [
-            (1.0, "Example correct response."),
-            (1.0, "Another correct response."),
-            (0.0, "Example incorrect response."),
-            (1.0, "Example correct response 1."),
-            (1.0, "Another correct response 1."),
-            (0.0, "Example incorrect response 1."),
-        ]
-    ]
+        del kl_ref_model
 
-    advantage_data = AdvantageData.from_list_of_rewards(example_reward_details)
+        base_model = AutoModelForCausalLM.from_pretrained(args.base_model)
+        logger.info("Loading weights to CUDA.")
+        base_model = base_model.to(device)
 
-    device = torch.device("cuda:0")
-
-    logger.info("Loading kl_ref weights")
-    kl_ref_model = AutoModelForCausalLM.from_pretrained(args.kl_ref_model)
-    logger.info("Loading kl_ref weights to CUDA.")
-    kl_ref_model = kl_ref_model.to(device)
-
-    per_token_probs_ref = sum(
-        get_per_token_probs(_batch, kl_ref_model)
-        for _batch in track(
-            advantage_data.get_iterator_for_inference(batch_size=5),
-            description="Inference: pi_ref",
+        per_token_probs_base = sum(
+            get_per_token_probs(_batch, base_model)
+            for _batch in track(
+                advantage_data["train"].get_iterator_for_inference(batch_size=5),
+                description="Inference: pi_old",
+            )
         )
-    )
-    del kl_ref_model
 
-    base_model = AutoModelForCausalLM.from_pretrained(args.base_model)
-    logger.info("Loading weights to CUDA.")
-    base_model = base_model.to(device)
-
-    per_token_probs_base = sum(
-        get_per_token_probs(_batch, base_model)
-        for _batch in track(
-            advantage_data.get_iterator_for_inference(batch_size=5),
-            description="Inference: pi_old",
+        assert isinstance(per_token_probs_ref, PerTokenProbs)
+        assert isinstance(per_token_probs_base, PerTokenProbs)
+        grpo_data = GRPOData(
+            **advantage_data["train"].model_dump(),
+            ref_probs=per_token_probs_ref,
+            base_probs=per_token_probs_base,
         )
-    )
 
-    assert isinstance(per_token_probs_ref, PerTokenProbs)
-    assert isinstance(per_token_probs_base, PerTokenProbs)
-    grpo_data = GRPOData(
-        **advantage_data.model_dump(),
-        ref_probs=per_token_probs_ref,
-        base_probs=per_token_probs_base,
-    )
-
-    for training_batch in grpo_data.get_iterator_for_training(
-        batch_size=args.bsz_train
-    ):
-        print({k: type(v) for k, v in training_batch.model_dump().items()})
-        break
-
-    base_model = optimize_grpo_one_epoch(
-        batcher=grpo_data.get_iterator_for_training(batch_size=args.bsz_train),
-        model=base_model,
-        gradient_accumulation_steps=1,
-    )
+        base_model = optimize_grpo_one_epoch(
+            batcher=grpo_data.get_iterator_for_training(batch_size=args.bsz_train),
+            model=base_model,
+            gradient_accumulation_steps=1,
+        )

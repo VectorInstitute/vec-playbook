@@ -12,6 +12,7 @@ from starters.llm_fine_tuning.rlvr.data_collation.batch import (
     TypedBatcher,
 )
 from starters.llm_fine_tuning.rlvr.data_collation.data_types import TypedBatch
+from starters.llm_fine_tuning.rlvr.types import ChatMessage
 
 
 if TYPE_CHECKING:
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 
 
 def _assistant_char_spans(
-    messages: Sequence[dict[str, str]], formatted: str
+    messages: Sequence[ChatMessage], formatted: str
 ) -> list[tuple[int, int]]:
     """Find [start, end) character spans of assistant contents inside formatted string.
 
@@ -31,7 +32,7 @@ def _assistant_char_spans(
     for message in messages:
         if message.get("role") != "assistant":
             continue
-        content = message.get("content", "")
+        content: str = message.get("content", "")  # type: ignore
         if not content:
             continue
         idx = formatted.find(content, cursor)
@@ -41,7 +42,7 @@ def _assistant_char_spans(
     return spans
 
 
-class RewardDetail(pydantic.BaseModel):
+class RewardDetailTokenized(pydantic.BaseModel):
     """Reward details for one rollout, outcome-supervised only.
 
     Attention mask is not included.
@@ -65,16 +66,16 @@ class RewardDetail(pydantic.BaseModel):
 
     @staticmethod
     def from_messages(
-        messages: list[dict[str, str]],
+        messages: list[ChatMessage],
         reward: float,
         tokenizer: PreTrainedTokenizerFast,
-    ) -> "RewardDetail":
+    ) -> "RewardDetailTokenized":
         """Tokenize a chat and create a per-token boolean loss mask."""
         chat_template = getattr(tokenizer, "chat_template", None)
         if chat_template is None:
             raise ValueError(f"Template is required but not available in: {tokenizer}")
         formatted = tokenizer.apply_chat_template(
-            messages,
+            messages,  # type: ignore[arg-type]
             tokenize=False,
             add_generation_prompt=False,
         )
@@ -100,10 +101,12 @@ class RewardDetail(pydantic.BaseModel):
             for _a, _b in offsets
         ]
 
-        return RewardDetail(input_ids=input_ids, loss_mask=loss_mask, reward=reward)
+        return RewardDetailTokenized(
+            input_ids=input_ids, loss_mask=loss_mask, reward=reward
+        )
 
 
-class _AdvantageDetail(RewardDetail):
+class _AdvantageDetail(RewardDetailTokenized):
     """Reward details plus group-relative advantage info.
 
     Important:
@@ -244,7 +247,9 @@ class AdvantageData(pydantic.BaseModel):
         return [_detail.reward for _detail in self.advantage_details]
 
     @staticmethod
-    def from_list_of_rewards(reward_details: list[RewardDetail]) -> "AdvantageData":
+    def from_list_of_rewards(
+        reward_details: list[RewardDetailTokenized],
+    ) -> "AdvantageData":
         """Compute advantage for a given batch of rewards."""
         if len(reward_details) == 0:
             msg = "reward_details must be a non-empty list, but an empty list is given."

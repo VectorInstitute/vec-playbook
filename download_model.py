@@ -9,11 +9,15 @@ uv run download_model.py \
 uv run download_model.py \
 --repo_name Qwen/Qwen3-4B-Thinking-2507 \
 --local_path /model-weights/Qwen3-4B-Thinking-2507
+
+uv run download_model.py \
+--repo_name Qwen/Qwen3-1.7B \
+--local_path /model-weights/Qwen3-1.7B
 """
 
 import argparse
 
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 parser = argparse.ArgumentParser()
@@ -23,4 +27,6 @@ parser.add_argument("--local_path", required=True)
 if __name__ == "__main__":
     args = parser.parse_args()
     AutoTokenizer.from_pretrained(args.repo_name).save_pretrained(args.local_path)
-    AutoModel.from_pretrained(args.repo_name).save_pretrained(args.local_path)
+    AutoModelForCausalLM.from_pretrained(args.repo_name).save_pretrained(
+        args.local_path
+    )

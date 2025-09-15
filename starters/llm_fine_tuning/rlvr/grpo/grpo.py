@@ -8,7 +8,7 @@ from torch.nn.functional import log_softmax
 from torch.optim import AdamW
 from transformers import PreTrainedModel
 
-from starters.llm_fine_tuning.rlvr.grpo.data_types import GRPOBatcher, BatchForGRPOTorch
+from starters.llm_fine_tuning.rlvr.grpo.data_types import BatchForGRPOTorch, GRPOBatcher
 
 
 def compute_grpo_loss(
