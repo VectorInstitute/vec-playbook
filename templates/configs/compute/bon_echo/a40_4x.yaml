@@ -1,0 +1,7 @@
+nodes: 1
+gpus_per_node: 4
+cpus_per_task: 32
+mem_gb: 64
+timeout_min: 60
+slurm:
+  partition: a40
