@@ -107,5 +107,9 @@ class DistributedLauncher(submitit.helpers.Checkpointable):
         ]
         return subprocess.run(cmd, check=False).returncode
 
+    def checkpoint(self, *args, **kwargs):
+        """Checkpoint the launcher so Submitit can requeue the job."""
+        return submitit.helpers.DelayedSubmission(self, *args, **kwargs)
+
 
 __all__ = ["DistributedLauncher"]
