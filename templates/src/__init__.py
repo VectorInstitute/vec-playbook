@@ -1,1 +1,1 @@
-"""Templates for training ML models on Vector cluster using Hydra and Submitit."""
+"""Templates training ML models workloads on Vector cluster using Hydra and Submitit."""

@@ -1,1 +1,1 @@
-"""Starters for VLM fine-tuning tasks."""
+"""Templates for VLM training workloads."""
