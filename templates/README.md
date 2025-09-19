@@ -149,30 +149,23 @@ ls ~/vec_jobs/
 # Follow logs in real-time (pipe to grep 'submitit' to focus on scheduler events)
 tail -f ~/vec_jobs/YYYYMMDD-HHMMSS/.submitit/*/std*.out
 ```
-## Checkpointing & requeue
+## Checkpointing & Requeue
 
-All templates can be made requeue-able on Slurm via Submitit:
+Checkpointing lets Submitit resubmit interrupted jobs (preemption, timeout, manual `scontrol requeue`) without restarting from scratch. The templates already subclass `submitit.helpers.Checkpointable`, so they ship with a default `checkpoint()` that returns `DelayedSubmission(self, *args, **kwargs)`. You simply need to persist enough training state to continue where you left off.
 
-1. Implement `checkpoint()` in your `train.py` and return a `submitit.helpers.DelayedSubmission`:
-   ```python
-   import submitit
+Submitit’s official [checkpointing guide](https://github.com/facebookincubator/submitit/blob/main/docs/checkpointing.md) covers how the `checkpoint()` hook works under the hood and provides additional patterns (e.g., swapping callables, partial pickling) if you need more control.
 
-   def checkpoint(self, *args, **kwargs):
-       return submitit.helpers.DelayedSubmission(self, *args, **kwargs)
-   ```
-2. Ensure your code saves state periodically (so a requeued run can resume).
-3. In `configs/_global.yaml`, enable requeue:
-   ```yaml
-   hydra:
-     launcher:
-       params:
-         max_num_timeout: 2
-         additional_parameters:
-           requeue: ""
-   ```
+**Toggling requeue behaviour**
+- Defaults live in `configs/requeue/{on,off}.yaml`. Pick the version you want via `requeue=on` or `requeue=off` on the CLI. (`off` disables the Slurm `--requeue` flag.)
+- Global safeguards such as `max_num_timeout` come from `configs/_global.yaml`; adjust them if your workload needs more automatic retries.
 
-Toggle the Submitit requeue flag per launch with `requeue=on` or `requeue=off` (the defaults are defined under `templates/configs/requeue/`).
+**Implementation checklist**
+1. Save checkpoints regularly inside `cfg.work_dir` (e.g., `outputs/checkpoint-epoch-*`). Capture model weights, optimizer state, and any metadata you need to resume.
+2. On startup (`__call__`), look for the most recent checkpoint and restore state before training continues. The templates include helper methods (`_latest_checkpoint`) you can reuse or extend.
+3. Ensure your `checkpoint()` method returns a `DelayedSubmission` that recreates the callable with the same arguments. If you need custom behaviour (changing hyperparameters, skipping corrupt steps), instantiate a new callable and pass it to `DelayedSubmission` instead of `self`.
+4. Test the flow by requeueing a running job (`scancel --signal=USR1 <jobid>` or Submitit's `job._interrupt(timeout=True)`) to confirm state is restored as expected.
 
-See:
+
+## Resources
+- Submitit: https://github.com/facebookincubator/submitit
 - Hydra Submitit launcher: https://hydra.cc/docs/plugins/submitit_launcher
-- Submitit (DelayedSubmission): https://github.com/facebookincubator/submitit
