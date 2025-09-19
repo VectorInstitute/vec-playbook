@@ -1,0 +1,21 @@
+/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Core/code-server/4.101.2/bin/code-server: 30: [[: not found
+[2025-09-18T14:21:50.614Z] info  code-server 4.101.2 aff005e19626ac6802223713fa569e743c125725
+[2025-09-18T14:21:50.807Z] info  Using user-data-dir /home/markcoat/.local/share/code-server
+[2025-09-18T14:21:50.848Z] info  Using config file /home/markcoat/.config/code-server/config.yaml
+[2025-09-18T14:21:50.848Z] info  HTTP server listening on http://10.1.1.97:9001/
+[2025-09-18T14:21:50.848Z] info    - Authentication is disabled
+[2025-09-18T14:21:50.849Z] info    - Not serving HTTPS
+[2025-09-18T14:21:50.849Z] info  Session server listening on /home/markcoat/.local/share/code-server/code-server-ipc.sock
+[10:22:41] 
+
+
+
+
+[10:22:41] Extension host agent started.
+File not found: /cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Core/code-server/4.101.2/lib/vscode/node_modules/vsda/rust/web/vsda_bg.wasm
+File not found: /cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Core/code-server/4.101.2/lib/vscode/node_modules/vsda/rust/web/vsda.js
+[10:22:43] [10.1.6.101][4ffa67f2][ManagementConnection] New connection established.
+[10:22:44] ComputeTargetPlatform: linux-x64
+[10:22:44] [10.1.6.101][f5a2bf11][ExtensionHostConnection] New connection established.
+[10:22:46] ComputeTargetPlatform: linux-x64
+[10:22:47] [10.1.6.101][f5a2bf11][ExtensionHostConnection] <329886> Launched Extension Host Process.

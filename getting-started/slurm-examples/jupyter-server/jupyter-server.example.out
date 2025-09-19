@@ -1,0 +1,26 @@
+[I 2025-09-17 14:57:22.409 ServerApp] jupyter_lsp | extension was successfully linked.
+[I 2025-09-17 14:57:22.415 ServerApp] jupyter_server_terminals | extension was successfully linked.
+[I 2025-09-17 14:57:22.420 ServerApp] jupyterlab | extension was successfully linked.
+[I 2025-09-17 14:57:22.426 ServerApp] notebook | extension was successfully linked.
+[I 2025-09-17 14:57:23.262 ServerApp] notebook_shim | extension was successfully linked.
+[I 2025-09-17 14:57:23.370 ServerApp] notebook_shim | extension was successfully loaded.
+[I 2025-09-17 14:57:23.374 ServerApp] jupyter_lsp | extension was successfully loaded.
+[I 2025-09-17 14:57:23.378 ServerApp] jupyter_server_terminals | extension was successfully loaded.
+[I 2025-09-17 14:57:23.412 LabApp] JupyterLab extension loaded from /scratch/markcoat/vec-playbook/getting-started/slurm-examples/jupyter-server/jupyter-server-venv/lib/python3.12/site-packages/jupyterlab
+[I 2025-09-17 14:57:23.412 LabApp] JupyterLab application directory is /scratch/markcoat/vec-playbook/getting-started/slurm-examples/jupyter-server/jupyter-server-venv/share/jupyter/lab
+[I 2025-09-17 14:57:23.413 LabApp] Extension Manager is 'pypi'.
+[I 2025-09-17 14:57:23.561 ServerApp] jupyterlab | extension was successfully loaded.
+[I 2025-09-17 14:57:23.569 ServerApp] notebook | extension was successfully loaded.
+[I 2025-09-17 14:57:23.570 ServerApp] Serving notebooks from local directory: /scratch/markcoat/vec-playbook/getting-started/slurm-examples/jupyter-server
+[I 2025-09-17 14:57:23.570 ServerApp] Jupyter Server 2.17.0 is running at:
+[I 2025-09-17 14:57:23.570 ServerApp] http://kn055.paice.vectorinstitute.ai:8888/tree?token=83b4c044abaf37fc9d31e9efd99922b2a3c7a8eae35aa8d9
+[I 2025-09-17 14:57:23.570 ServerApp]     http://127.0.0.1:8888/tree?token=83b4c044abaf37fc9d31e9efd99922b2a3c7a8eae35aa8d9
+[I 2025-09-17 14:57:23.570 ServerApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[C 2025-09-17 14:57:23.579 ServerApp] 
+    
+    To access the server, open this file in a browser:
+        file:///home/markcoat/.local/share/jupyter/runtime/jpserver-21417-open.html
+    Or copy and paste one of these URLs:
+        http://kn055.paice.vectorinstitute.ai:8888/tree?token=83b4c044abaf37fc9d31e9efd99922b2a3c7a8eae35aa8d9
+        http://127.0.0.1:8888/tree?token=83b4c044abaf37fc9d31e9efd99922b2a3c7a8eae35aa8d9
+[I 2025-09-17 14:57:23.642 ServerApp] Skipped non-installed server(s): basedpyright, bash-language-server, dockerfile-language-server-nodejs, javascript-typescript-langserver, jedi-language-server, julia-language-server, pyrefly, pyright, python-language-server, python-lsp-server, r-languageserver, sql-language-server, texlab, typescript-language-server, unified-language-server, vscode-css-languageserver-bin, vscode-html-languageserver-bin, vscode-json-languageserver-bin, yaml-language-server
