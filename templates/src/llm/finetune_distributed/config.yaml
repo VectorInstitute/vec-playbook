@@ -1,0 +1,35 @@
+trainer:
+  model:
+    name: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    gradient_checkpointing: false
+
+  data:
+    name: "karpathy/tiny_shakespeare"
+    text_key: "text"
+    max_length: 512
+    trust_remote_code: true
+
+  train:
+    num_train_epochs: 1
+    per_device_train_batch_size: 1
+    per_device_eval_batch_size: 1
+    gradient_accumulation_steps: 8
+    learning_rate: 2.0e-5
+    weight_decay: 0.0
+    logging_steps: 20
+    eval_steps: 200
+    save_steps: 200
+    eval_strategy: "steps"
+
+  dist:
+    mode: "fsdp"                 # none | ddp | fsdp
+    backend: "nccl"
+    bf16: false
+    fp16: true
+    fsdp: "full_shard auto_wrap"
+    fsdp_config:
+      use_orig_params: true
+      limit_all_gathers: true
+      forward_prefetch: true
+      sync_module_states: true
+      activation_checkpointing: false
