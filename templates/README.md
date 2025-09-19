@@ -63,16 +63,11 @@ uv run python -m <template_pkg>.launch \
   --multirun
 ```
 
+- `compute=<cluster>/<preset>` chooses the Slurm resources defined under `templates/configs/compute/` (or a custom preset you add).
+- `requeue=<on|off>` toggles the Submitit requeue flag described in the checkpointing section.
+- Additional Hydra overrides use `key=value` syntax; nested keys follow the YAML structure (e.g., `trainer.learning_rate=5e-4`).
 - Use of `--multirun` is required for the launcher to be picked up..
-- Overrides take the form `path.to.option=value`. For nested config entries (e.g., `trainer.learning_rate`), dot-notation matches the YAML structure.
-- Prepend `+` to add new config keys (e.g., `+trainer.extra_tag=myexperiment`).
-
-### Common Overrides
-
-- `compute=bon_echo/a40_1x` chooses the Slurm resource preset (see the `configs/compute/` directory or your own custom files).
-- `requeue=on|off` switches between the preset Submitit flags described in the Checkpointing section.
-- `paths.work_root=/scratch/$USER` redirects Hydra output directories to alternate storage.
-- Template hyperparameters live under `trainer.*` by convention (e.g., `trainer.batch_size=64`).
+- Prepend `+` to introduce new keys at runtime, like `+trainer.notes=baseline_a`.
 
 ### Examples (single parameter set)
 
@@ -137,17 +132,17 @@ uv run python -m vlm.image_captioning.launch \
 
 ### Monitoring Jobs
 
-Submitit emits scheduler updates as `[INFO] submitit` lines in each job's stdout; tail or `grep` those entries inside the `.submitit/` folder to track retries and completions without waiting for the run to end. The default `work_dir` (for both `hydra.run.dir` and `hydra.sweep.dir`) resolves to `~/vec_jobs/<timestamp>` via `configs/_global.yaml`; override it on launch with flags such as `paths.work_root=/scratch/$USER` or `work_dir=/scratch/$USER/vec_jobs/${experiment_name}` when you need to land artifacts on faster storage.
+By default, Hydra and Submitit create the working directory at `~/vec_jobs/<timestamp>` (see `configs/_global.yaml`). Override it when needed with flags such as `paths.work_root=/scratch/$USER` or `work_dir=/scratch/$USER/vec_jobs/${experiment_name}`.
 
 ```bash
 # Check SLURM job status
 squeue -u $USER
 
-# Check Hydra/Submitit output directory
-ls ~/vec_jobs/
+# Inspect the latest work directory
+ls -1t ~/vec_jobs | head
 
-# Follow logs in real-time (pipe to grep 'submitit' to focus on scheduler events)
-tail -f ~/vec_jobs/YYYYMMDD-HHMMSS/.submitit/*/std*.out
+# Follow Submitit stdout for the most recent job
+tail -f ~/vec_jobs/YYYYMMDD-HHMMSS/.submitit/*/stdout*
 ```
 ## Checkpointing & Requeue
 
