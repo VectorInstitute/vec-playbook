@@ -35,15 +35,17 @@ uv sync
 
 ## Cluster Setup
 
-1) Provide your Slurm defaults in `templates/configs/user.yaml`. If the file is missing in your clone (some teams git-ignore their personal copy), duplicate the template version shipped here before editing. Keep account credentials and other secrets out of source control.
+1) Provide your user Slurm account and any optional parameters in `templates/configs/user.yaml`.
+
 ```yaml
-slurm:
-  account: ACCOUNT
-  partition: PARTITION
-  qos: QOS
+user:
+  slurm:
+    account: YOUR_ACCOUNT
+    # additional_parameters:
+    #   qos: m2  # example Bon Echo QoS
 ```
 
-Use CLI overrides for alternate accounts or QoS when launching jobs, for example `... user.slurm.account=ACCOUNT_B user.slurm.additional_parameters.qos=fast`.
+Uncomment and edit `additional_parameters` entries as needed. Use CLI overrides for alternate accounts or QoS when launching jobs, for example `... user.slurm.account=ACCOUNT_B user.slurm.additional_parameters.qos=fast`.
 
 2) Pick a compute preset:
 - `templates/configs/compute/bon_echo/*` (A40, A100)
