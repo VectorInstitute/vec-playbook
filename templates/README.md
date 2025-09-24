@@ -77,13 +77,13 @@ uv run python -m <template_pkg>.launch \
 # Submit a single-GPU job on Bon Echo A40
 uv run python -m mlp.single.launch compute=bon_echo/a40_1x requeue=off --multirun
 
-# Submit a multi-GPU DDP job
-uv run python -m mlp.ddp.launch compute=bon_echo/a40_2x trainer.gradient_accumulation=2 --multirun
+# Submit a single-GPU job on Killarney L40S
+uv run python -m mlp.single.launch compute=killarney/l40s_1x requeue=off --multirun
 
 # Fine-tune a text classifier template with custom learning rate
 uv run python -m llm.text_classification.launch \
   compute=killarney/l40s_1x \
-  trainer.learning_rate=5e-4 \
+  +trainer.learning_rate=5e-4 \
   --multirun
 ```
 

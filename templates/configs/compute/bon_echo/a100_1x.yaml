@@ -1,0 +1,11 @@
+cluster: bon_echo
+nodes: 1
+gpu_type: a100
+gpus_per_node: 1
+time_limit: "8:00:00"
+timeout_min: 480
+mem_gb: 80
+cpus_per_task: 16
+gres: gpu:${.gpu_type}:${.gpus_per_node}
+slurm:
+  partition: a100

@@ -1,4 +1,5 @@
 cluster: bon_echo
+nodes: 1
 gpu_type: a40
 gpus_per_node: 2
 time_limit: "2:00:00"
@@ -6,3 +7,5 @@ timeout_min: 120
 mem_gb: 64
 cpus_per_task: 8
 gres: gpu:${.gpu_type}:${.gpus_per_node}
+slurm:
+  partition: a40
