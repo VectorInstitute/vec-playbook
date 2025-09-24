@@ -88,7 +88,6 @@ uv run python -m llm.text_classification.launch \
 Hydra blocks until the job finishes (or fails). For long or interactive sessions, wrap the command in `tmux`, `screen`, or submit a wrapper script as shown below.
 ### Practical Patterns for Long Jobs
 
-#### Option 1: tmux (Recommended)
 ```bash
 # Start a persistent session
 tmux new-session -s my_training
@@ -98,16 +97,6 @@ uv run python -m llm.text_classification.launch compute=bon_echo/a40_1x --multir
 
 # Detach with Ctrl+B, D (can close laptop/disconnect)
 # Later reattach with: tmux attach -s my_training
-```
-
-#### Option 2: Submit Hydra as SLURM Job
-```bash
-# Submit the entire sweep as a single SLURM job
-sbatch --job-name=my_sweep --time=24:00:00 --partition=cpu --wrap="\
-cd $(pwd) && \
-uv run python -m llm.text_classification.launch \
-  learning_rate=1e-3,1e-4,1e-5 \
-  --multirun"
 ```
 
 ### Parameter Sweeps with Hydra
