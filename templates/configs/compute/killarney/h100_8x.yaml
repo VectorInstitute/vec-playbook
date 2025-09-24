@@ -4,6 +4,7 @@ gpu_type: h100
 gpus_per_node: 8
 time_limit: "1:00:00"
 timeout_min: 60
+work_root: /scratch${oc.env:USER}
 mem_gb: 2048
 cpus_per_task: 96
 gres: gpu:${.gpu_type}:${.gpus_per_node}

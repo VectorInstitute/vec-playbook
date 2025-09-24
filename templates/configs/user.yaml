@@ -1,5 +1,5 @@
 user:
   slurm:
-    account: aip-x-ksupport
-    # additional_parameters:
-    #   qos: m2
+    account: vector
+    additional_parameters:
+      qos: m2

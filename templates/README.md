@@ -108,15 +108,15 @@ Hydra sweeps expand comma-separated value lists into Cartesian products and sche
 ```bash
 # Sweep learning rate and hidden size for the MLP template
 uv run python -m mlp.single.launch \
-  trainer.learning_rate=1e-2,1e-3,1e-4 \
-  trainer.hidden_dim=64,128,256 \
+  +trainer.learning_rate=1e-2,1e-3,1e-4 \
+  +trainer.hidden_dim=64,128,256 \
   compute=bon_echo/a40_1x \
   --multirun
 
 # Sweep batch size and LR for the VLM captioning template
 uv run python -m vlm.image_captioning.launch \
-  trainer.batch_size=8,16,32 \
-  trainer.learning_rate=1e-4,5e-5 \
+  +trainer.batch_size=8,16,32 \
+  +trainer.learning_rate=1e-4,5e-5 \
   compute=killarney/h100_1x \
   --multirun
 ```
