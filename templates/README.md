@@ -2,6 +2,12 @@
 
 Templates for training ML models workflows on Bon Echo and Killarney clusters using Hydra and Submitit.
 
+[Hydra](https://hydra.cc/docs/intro/) is a python framework for creating configurable experiments that you can change through a config file. One of it's main uses is its ability to automatically perform hyperparameter sweeps for model training.
+
+[submitit](https://github.com/facebookincubator/submitit) is a simple python package that lets you submit slurm jobs programmatically and automatically access and manipulate the results of those jobs once they are complete. It also handles automatic requeing of jobs should they be inturrupted for some reason.
+
+Hydra conveniently has a submitit plugin that allows them to work together. Put simply, using these tools you can automatically queue up a large number of experiments, run dependent experiments sequentially, requeue long running experiments and more. 
+
 ## Layout
 
 ```
@@ -17,21 +23,29 @@ templates/
 Each template directory is self-contained: it has a `launch.py`, a `train.py`, and a `config.yaml`.
 The `configs/` directory defines Slurm presets and shared Hydra + Submitit settings.
 
-Hydra starts from `configs/_global.yaml`, pulls in the appropriate entries from `configs/user.yaml` and `configs/compute/*`, then merges the template's own `config.yaml` before forwarding the resolved configuration to Submitit; CLI overrides (e.g. `compute=killarney/h100_1x`) are applied in that final merge, so every launch script receives a single, fully-specified config that Submitit uses to submit or run locally.
+Hydra starts from `configs/_global.yaml` and pulls in the appropriate entries from `configs/user.yaml` and `configs/compute/*`. The launch script within each template then merges the template's own local `config.yaml` before forwarding the resolved configuration to Submitit; CLI overrides (e.g. `compute=killarney/h100_1x`) are applied in that final merge, so every launch script receives a single, fully-specified config that Submitit uses to submit or run locally.
+
+The `_global.yaml` config contains the bulk of the autoconfiguration. Placeholders are used to automatically fill values with values from other configuration files. `hydra.launcher` arguments largely align with the CLI arguments available for the [sbatch](https://slurm.schedmd.com/sbatch.html) command. See [this](https://hydra.cc/docs/plugins/submitit_launcher/) page for the officialy available hydra slurm launcher parameters. Note that the majority of the parameters are sourced from the selected `compute` config.
 
 ## Local Setup
 
-1) Create and activate a virtual environment:
+1) Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 ```bash
-uv venv .venv
-source .venv/bin/activate
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-2) Resolve and install dependencies from `pyproject.toml`:
+2) Clone the vec-playbook repository
 ```bash
-uv lock
-uv sync
+git clone https://github.com/VectorInstitute/vec-playbook.git
 ```
+
+3) Resolve and install dependencies from `pyproject.toml` into a virtual environment:
+```bash
+cd path/to/vec-playbook
+uv sync  # Automatically installs dependencies in vec-playbook/.venv
+```
+
+Finally, ensure you're working directory (by default your cluster scratch space) exists and that you have access to the resources you're requesting on the cluster.
 
 ## Cluster Setup
 
@@ -44,17 +58,19 @@ user:
     # additional_parameters:
     #   qos: m2  # example Bon Echo QoS
 ```
+**NOTE:** why is qos used as example of additional parameter here when it is an official launcher parameter that seems to be sourced from compute config?
 
-Uncomment and edit `additional_parameters` entries as needed. Use CLI overrides for alternate accounts or QoS when launching jobs, for example `... user.slurm.account=ACCOUNT_B user.slurm.additional_parameters.qos=fast`.
+Uncomment and edit `additional_parameters` entries as needed. This field is solely for sbatch arguments not already available in the [Hydra Submitit Slurm Launcher Plugin](https://hydra.cc/docs/plugins/submitit_launcher/). Use CLI overrides for alternate accounts or QoS when launching jobs, for example `... user.slurm.account=ACCOUNT_B user.slurm.additional_parameters.qos=fast`.
 
-2) Pick a compute preset:
+2) Pick a compute preset to use in the next section:
 - `templates/configs/compute/bon_echo/*` (A40, A100)
 - `templates/configs/compute/killarney/*` (L40S, H100)
 - Create your own preset under `templates/configs/compute/` if you need different resources (match the YAML shape used in the existing files).
 
 ## Running Templates
 
-All launchers follow the same pattern: use `uv run python -m <package>.launch` with Hydra overrides that select compute presets, requeue behaviour, and any template-specific hyperparameters.
+All launchers follow the same pattern: use `uv run python -m <package>.launch` with Hydra overrides that select compute presets, requeue behaviour, and any template-specific hyperparameters. uv will automatically detect the virtual environment located in `.venv` of your CWD.
+
 ### Command Pattern
 
 ```bash
@@ -65,6 +81,7 @@ uv run python -m <template_pkg>.launch \
   --multirun
 ```
 
+-  `<template_pkg>` refers to the path to the template you would like to run (within) 
 - `compute=<cluster>/<preset>` chooses the Slurm resources defined under `templates/configs/compute/` (or a custom preset you add).
 - `requeue=<on|off>` toggles the Submitit requeue flag described in the checkpointing section.
 - Additional Hydra overrides use `key=value` syntax; nested keys follow the YAML structure (e.g., `trainer.learning_rate=5e-4`).

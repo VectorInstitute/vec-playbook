@@ -64,6 +64,7 @@ ssh-ed25519 AAAA5AA7OZOZ7NRB1acK54bB47h58N6AIEX4zDziR1r0nM41d3NCG0fgCArjUD45pr13
 
 Next, open the SSH Keys page in your Alliance account: [https://ccdb.alliancecan.ca/ssh_authorized_keys](https://ccdb.alliancecan.ca/ssh_authorized_keys). Paste your key into the SSH Key field, give it a name (typically the host name of the computer where you generated it) and hit Add Key.
 
+**NOTE:** You may need to wait up to 30 minutes after adding your ssh key for it to work when trying to login via ssh. Have lunch and come back.
 
 ## SSH Access
 
@@ -127,6 +128,7 @@ In addition to your home directory, you have a minimum of additional 250 GB scra
 
 A detailed description of the scratch purging policy is available on the Alliance Canada website: [https://docs.alliancecan.ca/wiki/Scratch_purging_policy](https://docs.alliancecan.ca/wiki/Scratch_purging_policy)
 
+Your scratch space directory will not exist when you initially log in. To have it set up send a request to [ops-help@vectorinstitute.ai](mailto:ops-help@vectorinstitute.ai). Include the name of your PI in the email.
 
 ## Shared projects
 
@@ -143,7 +145,7 @@ Instead of copying these datasets on your home directory, you can create a symli
 
 
 ```
-ln -s /dataset/PATH_TO_DATASET ~/PATH_OF_LINK # path of link can be some place in your home directory so that PyTorch/TF can pick up the dataset to these already downloaded directories.
+ln -s /datasets/PATH_TO_DATASET ~/PATH_OF_LINK # path of link can be some place in your home directory so that PyTorch/TF can pick up the dataset to these already downloaded directories.
 ```
 
 
@@ -161,6 +163,8 @@ Unlike the legacy Bon Echo (Vaughan) cluster, there is no dedicated checkpoint s
 
 
 # Migration from legacy Vaughan (Bon Echo) Cluster
+
+**NOTE:** The approach for migrating detailed here requires that you set up a second ssh key on killarney. Your public ssh key on the vaughan cluster will be different than the one on your local machine.
 
 The easiest way to migrate data from the legacy Vaughan (Bon Echo) Cluster to Killarney is by using a file transfer command (likely `rsync` or `scp`) from an SSH session.
 
@@ -377,6 +381,8 @@ gpubase_l40s_b3     32/32/0/64          gpu:l40s:4(IDX:0-3) gpu:l40s:4
 [...]
 ```
 
+For CPU's, A/I/OT stands for **A**llocated, **I**dle, **O**ther (eg. down) and **T**otal. Even if the GPU's on a node are available, if there are no Idle CPU's on the node then you won't be able to use it.
+
 ## Jupyter notebooks
 
 To run a Jupyter environment from the cluster, you can request an interactive session and start a Jupyter notebook from there.
@@ -430,6 +436,7 @@ You will need a VPN connection to access this notebook. Once you are connected t
 
 # Software Environments
 
+## Pre-installed Environments
 The cluster comes with preinstalled software environments called **modules**. These will allow you to access many different versions of Python, VS Code Server, RStudio Server, NodeJS and many others. 
 
 To see the available preinstalled environments, run:
@@ -444,7 +451,8 @@ To use an environment, use `module load`. For example, if you need to use Python
 module load python/3.10.12
 ```
 
-If there isn't a preinstalled environment for your needs, you can use Poetry or python-venv. Here is a quick example of how to use python venv.
+## Custom Environments
+If there isn't a preinstalled environment for your needs, you can use [uv](https://docs.astral.sh/uv/), or python-venv. For ongoing projects it is highly recommended to use uv to manage dependencies. To just run something quickly one time, python-venv might be easier. Here is a quick example of how to use python venv.
 
 In the login node run the following:
 
@@ -498,13 +506,15 @@ gpubase_l40s_b5    up 7-00:00:00        17/0/0/17 kn[085-101]
 
 ## Automatic Restarts
 
+**NOTE:** There is currently no premption on the Killarney cluster
+
 All jobs in our Slurm cluster have a time limit, after which they will get stopped. For longer running jobs which need more than a few hours, the [Vaughan Slurm Changes](https://support.vectorinstitute.ai/Computing?action=AttachFile&do=view&target=Vector+Vaughan+HPC+Changes+FAQ+2023.pdf) document describes how to automatically restart these.
 
 ## Checkpoints
 
 In order to avoid losing your work when your job exits, you will need to implement checkpoints - periodic snapshots of your work that you load from so you can stop and resume without much lost work.
 
-On the legacy Bon Echo cluster, there was a dedicated checkpoint space in the file system for checkpoints. **⚠️ In Killarney, there is no dedicated checkpoint space.** Users are expected to manage their own checkpoints under their `$SCRATCH` folder.
+On the legacy Bon Echo cluster, there was a dedicated checkpoint space in the file system for checkpoints. **⚠️ In Killarney, there is no dedicated checkpoint space.** Users are expected to manage their own checkpoints under their `$SCRATCH` folder. Recall that your scratch folder is not permanent, and so you'll want to move any important checkpoints to you're home or project folder.
 
 
 # Useful Links and Resources
