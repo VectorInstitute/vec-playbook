@@ -1,0 +1,10 @@
+cluster: killarney
+nodes: 1
+gpus_per_node: 0
+cpus_per_task: 32
+mem_gb: 64
+work_root: /scratch/${oc.env:USER}
+timeout_min: 60
+gres: null
+slurm:
+  gpus_per_node: null

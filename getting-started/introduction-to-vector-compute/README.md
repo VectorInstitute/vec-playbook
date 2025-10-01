@@ -4,6 +4,8 @@ This guide covers important details and examples for accessing and using Vector'
 
 # Table of Contents
 
+- [Introduction to Vector Compute](#introduction-to-vector-compute)
+- [Table of Contents](#table-of-contents)
 - [Logging onto Killarney](#logging-onto-killarney)
   - [Getting an Account](#getting-an-account)
   - [Public Key Setup](#public-key-setup)
@@ -21,9 +23,9 @@ This guide covers important details and examples for accessing and using Vector'
   - [View jobs in the Slurm cluster (squeue)](#view-jobs-in-the-slurm-cluster-squeue)
   - [Submit a new Slurm job (sbatch)](#submit-a-new-slurm-job-sbatch)
   - [Interactive sessions (srun)](#interactive-sessions-srun)
+  - [SSH to sbatch job](#ssh-to-sbatch-job)
   - [Accessing specific GPUs](#accessing-specific-gpus)
   - [View cluster resource utilization (sinfo)](#view-cluster-resource-utilization-sinfo)
-  - [Jupyter notebooks](#jupyter-notebooks)
 - [Software Environments](#software-environments)
 - [Time Limits](#time-limits)
   - [Tiers](#tiers)
@@ -224,42 +226,42 @@ Since the cluster has many users and limited resources, we use the Slurm job sch
 
 # Using Slurm
 
-The Alliance documentation provides lots of general information about submitting jobs using the Slurm job scheduler: [https://docs.alliancecan.ca/wiki/Running_jobs](https://docs.alliancecan.ca/wiki/Running_jobs)	
+The Alliance documentation provides lots of general information about submitting jobs using the Slurm job scheduler: [https://docs.alliancecan.ca/wiki/Running_jobs](https://docs.alliancecan.ca/wiki/Running_jobs)
+
+For some example Slurm workloads specific to the Killarney cluster (sbatch files, resource configurations, software environments, etc.) see the (../slurm-examples)[slurm-examples] provided in this repo.
 
 
 ## View jobs in the Slurm cluster (squeue)
 
-To view all the jobs currently in the cluster, either running, pending or failed, use squeue ([https://slurm.schedmd.com/squeue.html](https://slurm.schedmd.com/squeue.html))
+To view all the jobs currently in the cluster, either running, pending or failed, use **squeue**: ([https://slurm.schedmd.com/squeue.html](https://slurm.schedmd.com/squeue.html))
 
 
 ```
 username@klogin01:~$ squeue
           JOBID     USER      ACCOUNT           NAME  ST  TIME_LEFT NODES CPUS TRES_PER_N MIN_MEM NODELIST (REASON) 
-         505480 username     aip-acct        jupyter   R      41:31     1    4 gres/gpu:l    300G kn141 (None) 
-       504615_8 username     aip-acct         My_JOB   R      50:05     1   32 gres/gpu:l     64G kn054 (None) 
-       504615_9 username     aip-acct         My_JOB   R      53:07     1   32 gres/gpu:l     64G kn038 (None) 
-      504615_10 username     aip-acct         My_JOB   R      54:07     1   32 gres/gpu:l     64G kn039 (None) 
-         499132 username     aip-acct SFBDF_cifar10_   R      54:45     1   32 gres/gpu:3     60G kn135 (None) 
-         505622 username     aip-acct        tus-rec   R      58:39     1   10 gres/gpu:l    128G kn001 (None) 
-      504615_11 username     aip-acct         My_JOB   R    1:00:48     1   32 gres/gpu:l     64G kn041 (None) 
-      504615_12 username     aip-acct         My_JOB   R    1:03:37     1   32 gres/gpu:l     64G kn008 (None) 
-         504859 username     aip-acct         sbatch   R    1:06:59     1   16 gres/gpu:l     64G kn034 (None)
+         505480    user1     aip-acct        jupyter   R      41:31     1    4 gres/gpu:l    300G kn141 (None) 
+       504615_8    user2     aip-acct         My_JOB   R      50:05     1   32 gres/gpu:l     64G kn054 (None) 
+       504615_9    user2     aip-acct         My_JOB   R      53:07     1   32 gres/gpu:l     64G kn038 (None) 
+      504615_10    user2     aip-acct         My_JOB   R      54:07     1   32 gres/gpu:l     64G kn039 (None) 
+         499132    user3     aip-acct SFBDF_cifar10_   R      54:45     1   32 gres/gpu:3     60G kn135 (None) 
+         505622    user4     aip-acct        tus-rec   R      58:39     1   10 gres/gpu:l    128G kn001 (None) 
+      504615_11    user5     aip-acct         My_JOB   R    1:00:48     1   32 gres/gpu:l     64G kn041 (None) 
+      504615_12    user5     aip-acct         My_JOB   R    1:03:37     1   32 gres/gpu:l     64G kn008 (None) 
+         504859    user6     aip-acct         sbatch   R    1:06:59     1   16 gres/gpu:l     64G kn034 (None)
 [...]
 ```
 
-There are many different options for the squeue command. For example, to view jobs that are pending and waiting to start running, use the `-t PENDING` flag:
+There are many different options for the squeue command. For example, to view only jobs that belong to me, use the `--me` flag:
 
 ```
-username@login01:~$ squeue -t PENDING
+username@login01:~$ $ squeue --me
           JOBID     USER      ACCOUNT           NAME  ST  TIME_LEFT NODES CPUS TRES_PER_N MIN_MEM NODELIST (REASON) 
-  505518_[5-48] username     aip-acct         My_JOB  PD    4:00:00     1   32 gres/gpu:l     64G  (Resources) 
-         505759 username     aip-acct grpg_qwen3_4b_  PD 1-00:00:00     1    8 gres/gpu:h     32G  (Resources) 
-         505739 username     aip-acct lora_with_rgb_  PD   16:00:00     1   12 gres/gpu:h    256G  (Priority) 
-         505714 username     aip-acct base_ff_96_fra  PD 1-00:00:00     1   12 gres/gpu:h    256G  (Priority) 
-         505717 username     aip-acct base_ff_128_fr  PD 1-00:00:00     1   12 gres/gpu:h    256G  (Priority) 
-         505300 username     aip-acct vanilla_vq_ima  PD 3-00:00:00     1   10 gres/gpu:h     50G  (Resources)
+         937344 username     aip-acct    imagenet.sh  PD    2:00:00     1    8 gres/gpu:l     64G  (Priority) 
+
 [...]
 ```
+
+Refer to the ([squeue manual page](https://slurm.schedmd.com/squeue.html)) for a full list of options.
 
 
 ## Submit a new Slurm job (sbatch)
@@ -303,7 +305,7 @@ Note that the %j in output and error configuration tells Slurm to substitute the
 
 ## Interactive sessions (srun)
 
-To get an interactive session, you must use `srun` (https://slurm.schedmd.com/srun.html)
+If all you want is an interactive session on a GPU node (without the batch job), just use `srun` (https://slurm.schedmd.com/srun.html)
 
 A common configuration for interactive debugging is:
 
@@ -322,7 +324,28 @@ srun: job 501831 has been allocated resources
 username@kn138:/project
 ```
 
-After you see $USER@kn###, you can run your script interactively. It is also possible to 'attach' a new shell session to an existing jobID (either batch or interactive) using the the srun option of --overlap.
+After you see $USER@kn###, you can run your script interactively.
+
+
+## SSH to sbatch job
+
+Any job submitted with sbatch is by definition a *batch* (non-interactive) job. It will sit in the Slurm scheduler queue until the appropriate compute resources become available, then it will run in the background. If you want to attach an interactive session to a running job, you can also do this using `srun`:
+
+```
+srun --pty --overlap --jobid <job-id> -w <hostname> /bin/bash
+```
+
+To obtain the values for `<job-id>` and `<hostname>`, use the `squeue` command as described above. In the following example, I query a list of my jobs and then use the above command to get an interactive shell session:
+
+```
+username@klogin01:~/scratch/imagenet$ sbatch imagenet.sh
+Submitted batch job 937373
+username@klogin01:~/scratch/imagenet$ squeue --me
+          JOBID     USER      ACCOUNT           NAME  ST  TIME_LEFT NODES CPUS TRES_PER_N MIN_MEM NODELIST (REASON) 
+         937373 username     aip-acct    imagenet.sh   R    1:52:20     1    8 gres/gpu:l     64G kn060 (None) 
+username@klogin01:~/scratch/imagenet$ srun --pty --overlap --jobid 937373 -w kn060 /bin/bash
+username@kn060:~/scratch/imagenet$
+```
 
 
 ## Accessing specific GPUs
@@ -376,57 +399,6 @@ gpubase_l40s_b2     32/32/0/64          gpu:l40s:4(IDX:0-3) gpu:l40s:4
 gpubase_l40s_b3     32/32/0/64          gpu:l40s:4(IDX:0-3) gpu:l40s:4
 [...]
 ```
-
-## Jupyter notebooks
-
-To run a Jupyter environment from the cluster, you can request an interactive session and start a Jupyter notebook from there.
-
-First, log into the cluster via ssh to killarney.alliancecan.ca:
-
-```
-ssh username@killarney.alliancecan.ca
-```
-
-Jupyter is not installed by default. You need to install it yourself by running:
-
-```
-pip install jupyter
-export PATH=$PATH:~/.local/bin
-```
-
-Make sure you have a .jupyter folder in your home directory:
-
-```
-mkdir -p ~/.jupyter
-```
-
-Next, use srun to request an interactive session. The following example asks for an A40 GPU and 32 GB of system memory.
-
-```
-srun --gres=gpu:l40s:1 --mem=32G --time 2:00:00 --pty bash
-```
-
-Now start the notebook:
-
-```
-username@kn135:~$ jupyter notebook --ip 0.0.0.0
-[...]
-[I 2025-08-20 11:52:22.038 ServerApp] Serving notebooks from local directory: /scratch/username/slurm/helloworld
-[I 2025-08-20 11:52:22.038 ServerApp] Jupyter Server 2.16.0 is running at:
-[I 2025-08-20 11:52:22.038 ServerApp] http://kn135:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
-[I 2025-08-20 11:52:22.038 ServerApp]     http://127.0.0.1:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
-[I 2025-08-20 11:52:22.038 ServerApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
-[C 2025-08-20 11:52:22.054 ServerApp] 
-    
-    To access the server, open this file in a browser:
-        file:///home/username/.local/share/jupyter/runtime/jpserver-942891-open.html
-    Or copy and paste one of these URLs:
-        http://kn135:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
-        http://127.0.0.1:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
-
-You will need a VPN connection to access this notebook. Once you are connected to the VPN, visit the URL beginning with http://kn####, so in the example above this would be: http://kn135:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
-```
-
 
 # Software Environments
 
