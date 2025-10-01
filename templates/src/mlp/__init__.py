@@ -5,5 +5,5 @@ import submitit
 
 
 submitit.core.core.Job._results_timeout_s = max(
-    submitit.core.core.Job._results_timeout_s, 120
+    submitit.core.core.Job._results_timeout_s, 360
 )

@@ -35,15 +35,17 @@ uv sync
 
 ## Cluster Setup
 
-1) Provide your Slurm defaults in `templates/configs/user.yaml`. If the file is missing in your clone (some teams git-ignore their personal copy), duplicate the template version shipped here before editing. Keep account credentials and other secrets out of source control.
+1) Provide your user Slurm account and any optional parameters in `templates/configs/user.yaml`.
+
 ```yaml
-slurm:
-  account: ACCOUNT
-  partition: PARTITION
-  qos: QOS
+user:
+  slurm:
+    account: YOUR_ACCOUNT
+    # additional_parameters:
+    #   qos: m2  # example Bon Echo QoS
 ```
 
-Use CLI overrides for alternate accounts or QoS when launching jobs, for example `... user.slurm.account=ACCOUNT_B user.slurm.additional_parameters.qos=fast`.
+Uncomment and edit `additional_parameters` entries as needed. Use CLI overrides for alternate accounts or QoS when launching jobs, for example `... user.slurm.account=ACCOUNT_B user.slurm.additional_parameters.qos=fast`.
 
 2) Pick a compute preset:
 - `templates/configs/compute/bon_echo/*` (A40, A100)
@@ -75,20 +77,19 @@ uv run python -m <template_pkg>.launch \
 # Submit a single-GPU job on Bon Echo A40
 uv run python -m mlp.single.launch compute=bon_echo/a40_1x requeue=off --multirun
 
-# Submit a multi-GPU DDP job
-uv run python -m mlp.ddp.launch compute=bon_echo/a40_2x trainer.gradient_accumulation=2 --multirun
+# Submit a single-GPU job on Killarney L40S
+uv run python -m mlp.single.launch compute=killarney/l40s_1x requeue=off --multirun
 
 # Fine-tune a text classifier template with custom learning rate
 uv run python -m llm.text_classification.launch \
   compute=killarney/l40s_1x \
-  trainer.learning_rate=5e-4 \
+  +trainer.learning_rate=5e-4 \
   --multirun
 ```
 
 Hydra blocks until the job finishes (or fails). For long or interactive sessions, wrap the command in `tmux`, `screen`, or submit a wrapper script as shown below.
 ### Practical Patterns for Long Jobs
 
-#### Option 1: tmux (Recommended)
 ```bash
 # Start a persistent session
 tmux new-session -s my_training
@@ -100,16 +101,6 @@ uv run python -m llm.text_classification.launch compute=bon_echo/a40_1x --multir
 # Later reattach with: tmux attach -s my_training
 ```
 
-#### Option 2: Submit Hydra as SLURM Job
-```bash
-# Submit the entire sweep as a single SLURM job
-sbatch --job-name=my_sweep --time=24:00:00 --partition=cpu --wrap="\
-cd $(pwd) && \
-uv run python -m llm.text_classification.launch \
-  learning_rate=1e-3,1e-4,1e-5 \
-  --multirun"
-```
-
 ### Parameter Sweeps with Hydra
 
 Hydra sweeps expand comma-separated value lists into Cartesian products and schedule each configuration as a separate Submitit job. Output directories are numbered based on Hydra's sweep index.
@@ -117,15 +108,15 @@ Hydra sweeps expand comma-separated value lists into Cartesian products and sche
 ```bash
 # Sweep learning rate and hidden size for the MLP template
 uv run python -m mlp.single.launch \
-  trainer.learning_rate=1e-2,1e-3,1e-4 \
-  trainer.hidden_dim=64,128,256 \
+  +trainer.learning_rate=1e-2,1e-3,1e-4 \
+  +trainer.hidden_dim=64,128,256 \
   compute=bon_echo/a40_1x \
   --multirun
 
 # Sweep batch size and LR for the VLM captioning template
 uv run python -m vlm.image_captioning.launch \
-  trainer.batch_size=8,16,32 \
-  trainer.learning_rate=1e-4,5e-5 \
+  +trainer.batch_size=8,16,32 \
+  +trainer.learning_rate=1e-4,5e-5 \
   compute=killarney/h100_1x \
   --multirun
 ```

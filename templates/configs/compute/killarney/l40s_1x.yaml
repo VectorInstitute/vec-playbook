@@ -4,6 +4,7 @@ gpu_type: l40s
 gpus_per_node: 1
 time_limit: "1:00:00"
 timeout_min: 60
+work_root: /scratch/${oc.env:USER}
 mem_gb: 64
 cpus_per_task: 32
 gres: gpu:${.gpu_type}:${.gpus_per_node}

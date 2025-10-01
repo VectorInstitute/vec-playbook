@@ -18,6 +18,6 @@ uv run python -m mlp.single.launch compute=bon_echo/a40_1x requeue=on --multirun
 # Launch 2×A40 DDP training with a larger hidden layer
 uv run python -m mlp.ddp.launch \
   compute=bon_echo/a40_2x \
-  trainer.hidden_dim=256 \
+  +trainer.hidden_dim=256 \
   --multirun
 ```

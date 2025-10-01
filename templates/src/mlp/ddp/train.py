@@ -212,7 +212,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
             torch.cuda.manual_seed(seed)
 
         # Setup distributed training
-        self._initialize_distributed(rank, world_size)
+        self._setup_distributed(rank, world_size)
 
         # Setup device and model
         device, model = self._initialize_device_and_model(cfg, local_rank)

@@ -8,7 +8,7 @@ defaults:
 experiment_name: ${now:%Y%m%d}-${now:%H%M%S}
 
 paths:
-  work_root: /scratch/${oc.env:USER}
+  work_root: ${oc.select:compute.work_root, /scratch/${oc.env:USER}}
 work_dir: ${paths.work_root}/vec_jobs/${experiment_name}
 
 hydra:

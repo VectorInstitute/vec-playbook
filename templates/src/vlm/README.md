@@ -11,6 +11,6 @@ These folders show how to fine-tune a vision-language model with Hydra + Submiti
 # Submit a GPU run on Bon Echo A40
 uv run python -m vlm.image_captioning.launch \
   compute=bon_echo/a40_1x \
-  trainer.batch_size=16 \
+  +trainer.batch_size=16 \
   --multirun
 ```
