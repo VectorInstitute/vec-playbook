@@ -12,5 +12,7 @@ module load python/3.12.4
 echo "Python version:"
 python3 --version
 
-# Use python to write "Hello Killarney"
+# Run a few commands to demonstrate that we got the resources we asked for
 python3 -c 'print("Hello Killarney")'
+echo "We are running on hostname: $(hostname --fqdn)"
+nvidia-smi
