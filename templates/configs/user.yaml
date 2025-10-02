@@ -1,5 +1,3 @@
 user:
   slurm:
     account: vector
-    additional_parameters:
-      qos: m2

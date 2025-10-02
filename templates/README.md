@@ -63,7 +63,8 @@ user:
     # additional_parameters:
     #   qos: m2  # example Bon Echo QoS
 ```
-**NOTE:** why is qos used as example of additional parameter here when it is an official launcher parameter that seems to be sourced from compute config?
+
+[//]: <> (why is qos used as example of additional parameter here when it is an official launcher parameter that seems to be sourced from compute config?)
 
 Uncomment and edit `additional_parameters` entries as needed. This field is solely for sbatch arguments not already available in the [Hydra Submitit Slurm Launcher Plugin](https://hydra.cc/docs/plugins/submitit_launcher/). Use CLI overrides for alternate accounts or QoS when launching jobs, for example `... user.slurm.account=ACCOUNT_B user.slurm.additional_parameters.qos=fast`.
 
@@ -82,18 +83,17 @@ All launchers follow the same pattern: use `uv run python -m <package>.launch` w
 uv run python -m <template_pkg>.launch \
   compute=<cluster>/<preset> \
   requeue=<on|off> \
-  <other.hydra.or.template.overrides> \
+  <other.global.user.or.compute.overrides> \
+  +<other.local.overrides> \
   --multirun
 ```
 
 -  `<template_pkg>`: The module path to the template launch script (eg.  `mlp.single`)
 - `compute=<cluster>/<preset>`: chooses the Slurm resources defined under `templates/configs/compute/` (or a custom preset you add).
 - `requeue=<on|off>`: toggles the Submitit requeue flag described in the checkpointing section.
-- Additional Hydra overrides use `key=value` syntax; nested keys follow the YAML structure (e.g., `trainer.learning_rate=5e-4`).
-- Prepend `+` to introduce new keys (not already present in config) at runtime, like `+trainer.notes=baseline_a`.
-- Use of `--multirun` is required for the launcher to be picked up.
-
-[//]: <> (What does "picked up" mean when explaining --multirun flag?)
+- Additional Hydra overrides use `key=value` syntax; nested keys follow the YAML structure (e.g., `compute.mem_gb=32`).
+- Keys not already present in `_global.yaml` or it's dependencies (`user.yaml`, compute yamls) must be prepended with a `+`. This includes new keys as well as those merged in later such as the templates local `config.yaml` (eg. `trainer.learnin_rate`).
+- Use of `--multirun` is required to use the submitit slurm launcher, even if you are only performing a single run. Otherwise the model will attempt to train locally.
 
 ### Examples (single parameter set)
 
