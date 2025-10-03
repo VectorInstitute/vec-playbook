@@ -208,18 +208,10 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         seed = OmegaConf.select(cfg, "trainer.seed", default=42)
 
         # Get distributed training info from environment
+        # TODO: None of these env vars are actually set at the moment. Need to fix this example.
         rank = int(os.environ.get("RANK", "0"))
         local_rank = int(os.environ.get("LOCAL_RANK", "0"))
         world_size = int(os.environ.get("WORLD_SIZE", "1"))
-
-        if not os.environ.get("WORLD_SIZE", False):
-            logger.info('WORLD_SIZE env var is not set')
-
-        if not os.environ.get("LOCAL_RANK", False):
-            logger.info('LOCAL_RANK env var is not set')
-
-        if not os.environ.get("RANK", False):
-            logger.info('RANK env var is not set')
 
         if rank == 0:
             logger.info(f"Starting DDP MLP training with seed {seed}")
