@@ -208,12 +208,13 @@ After running a template, the output artifacts will be saved to the work_dir spe
 vec_jobs/<timestamp>/
 ├── multirun.yaml  # Template config used by hydra for all runs
 ├── submitit_logs/
-│  ├── <slurm-job-ID>/  # One for each run (job submitted by hydra)
-│  │   ├── <slurm-job-ID>_<hydra-run-id>_log.err  # stderr
-│  │   ├── <slurm-job-ID>_<hydra-run-id>_log.out  # stdout
-│  │   ├── <slurm-job-ID>_<hydra-run-id>_result.pkl
-│  │   ├── <slurm-job-ID>_submission.sh  # The sbatch script that was submitted for this job
-│  │   └── <slurm-job-ID>_submitted.pkl
+│  ├── <base-slurm-job-ID>/  # If there is only 1 run, then all the submitit logs will be in here instead
+│  │   └── <slurm-job-ID>_submission.sh  # The sbatch script used to submit all the slurm jobs
+│  ├── <base-slurm-job-ID>_<hydra-run-id>/  # This is the run's slurm-job-ID, one dir for each run
+│  │   ├── <base-slurm-job-ID>_<hydra-run-id>_log.err  # stderr
+│  │   ├── <base-slurm-job-ID>_<hydra-run-id>_log.out  # stdout
+│  │   ├── <base-slurm-job-ID>_<hydra-run-id>_result.pkl
+│  │   └── <base-slurm-job-ID>_submitted.pkl
 │  ...
 │  └── <slurm-jon-ID>/
 │      ...
@@ -237,3 +238,4 @@ vec_jobs/<timestamp>/
 - print messages will not be sent to launch.log, use a logger instead (see example templates)
 - `multirun.yaml` and `hydra.yaml` will contain placeholder values (eg. `${oc.select:compute.mem_gb}`). These are used to fill in the values with values from other parts of the config or other configs included in the defaults. See hydra documentation for more detail.
 - When doing a hyperparameter sweep, a run is performed for each unique combination of hyperparameters. Each run is run as a separate slurm job with a unique slurm ID.
+  - All the runs are submitted as separate jobs using the slurm `--array` feature. Therefore there is a base slurm job id shared by all runs. The slurm-job-id actually used by slurm for each run is a combination of the base slurm job ID and the hydra run ID (eg. `1186868_0`).
