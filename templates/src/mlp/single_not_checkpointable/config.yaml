@@ -13,6 +13,8 @@ trainer:
   seed: 42
 
 hydra:
+  job:
+    name: hydra_mlp
   searchpath:
     - pkg://configs  # Include configs from the configs package in the searchpath
 

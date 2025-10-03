@@ -208,6 +208,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         seed = OmegaConf.select(cfg, "trainer.seed", default=42)
 
         # Get distributed training info from environment
+        # TODO: None of these env vars are actually set at the moment. Need to fix this example.
         rank = int(os.environ.get("RANK", "0"))
         local_rank = int(os.environ.get("LOCAL_RANK", "0"))
         world_size = int(os.environ.get("WORLD_SIZE", "1"))
@@ -220,6 +221,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed(seed)
+            logger.info(f"Number of available GPUs: {torch.cuda.device_count()}")
 
         # Setup distributed training
         self._setup_distributed(rank, world_size)

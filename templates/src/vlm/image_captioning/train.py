@@ -202,6 +202,7 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
     def _save_checkpoint(self, model, processor, epoch, out_dir):
         """Save model and processor checkpoint."""
         save_dir = os.path.join(out_dir, f"checkpoint-epoch-{epoch}")
+        logger.info(f"Saving checkpoint-epoch-{epoch}")
         os.makedirs(save_dir, exist_ok=True)
         model.save_pretrained(save_dir)
         processor.save_pretrained(save_dir)

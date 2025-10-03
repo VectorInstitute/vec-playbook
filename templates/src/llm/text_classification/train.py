@@ -57,6 +57,8 @@ class TextClassificationTrainer(submitit.helpers.Checkpointable):
             model_name, num_labels=OmegaConf.select(cfg, "trainer.num_labels", default=4)
         )
 
+        # Feel free to add any additional args you want to pass to the config.yaml and pass them here
+        # See the following link for a full description of all 119 possible args: https://huggingface.co/docs/transformers/v4.56.2/en/main_classes/trainer#transformers.TrainingArguments
         args = TrainingArguments(
             output_dir=out_dir,
             overwrite_output_dir=True,
