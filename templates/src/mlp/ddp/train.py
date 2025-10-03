@@ -212,6 +212,15 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         local_rank = int(os.environ.get("LOCAL_RANK", "0"))
         world_size = int(os.environ.get("WORLD_SIZE", "1"))
 
+        if not os.environ.get("WORLD_SIZE", False):
+            logger.info('WORLD_SIZE env var is not set')
+
+        if not os.environ.get("LOCAL_RANK", False):
+            logger.info('LOCAL_RANK env var is not set')
+
+        if not os.environ.get("RANK", False):
+            logger.info('RANK env var is not set')
+
         if rank == 0:
             logger.info(f"Starting DDP MLP training with seed {seed}")
             logger.info(f"World size: {world_size}, Local rank: {local_rank}")
@@ -220,6 +229,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed(seed)
+            logger.info(f"Number of available GPUs: {torch.cuda.device_count()}")
 
         # Setup distributed training
         self._setup_distributed(rank, world_size)

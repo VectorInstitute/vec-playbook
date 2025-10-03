@@ -41,22 +41,24 @@ class TextClassificationTrainer(submitit.helpers.Checkpointable):
 
         self.ckpt_dir = self._latest_checkpoint(out_dir)
 
-        model_name = OmegaConf.select(cfg, "trainer.model_name", "distilbert-base-uncased")
+        model_name = OmegaConf.select(cfg, "trainer.model_name", default="distilbert-base-uncased")
         ds = load_dataset("ag_news")
         tok = AutoTokenizer.from_pretrained(model_name, use_fast=True)
 
         def tok_fn(ex):
             return tok(
-                ex["text"], truncation=True, max_length=OmegaConf.select(cfg, "trainer.max_length", 256)
+                ex["text"], truncation=True, max_length=OmegaConf.select(cfg, "trainer.max_length", default=256)
             )
 
         ds = ds.map(tok_fn, batched=True)
         collator = DataCollatorWithPadding(tokenizer=tok)
 
         model = AutoModelForSequenceClassification.from_pretrained(
-            model_name, num_labels=OmegaConf.select(cfg, "trainer.num_labels", 4)
+            model_name, num_labels=OmegaConf.select(cfg, "trainer.num_labels", default=4)
         )
 
+        # Feel free to add any additional args you want to pass to the config.yaml and pass them here
+        # See the following link for a full description of all 119 possible args: https://huggingface.co/docs/transformers/v4.56.2/en/main_classes/trainer#transformers.TrainingArguments
         args = TrainingArguments(
             output_dir=out_dir,
             overwrite_output_dir=True,

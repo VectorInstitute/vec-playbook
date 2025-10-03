@@ -119,9 +119,9 @@ Your output should look something like this:
 [2025-09-29 11:06:00,546][HYDRA]        #0 : compute=killarney/l40s_1x
 ```
 
-Hydra blocks until the job finishes (or fails). For long or interactive sessions, wrap the command in `tmux`, `screen`, or submit a wrapper script as shown below.
-
 ### Practical Patterns for Long Jobs
+
+Hydra blocks until the job finishes (or fails). For long or interactive sessions, wrap the command in `tmux`, `screen`, or submit a wrapper script as shown below.
 
 ```bash
 # Start a persistent session
@@ -133,6 +133,8 @@ uv run python -m llm.text_classification.launch compute=bon_echo/a40_1x --multir
 # Detach with Ctrl+B, D (can close laptop/disconnect)
 # Later reattach with: tmux attach -s my_training
 ```
+
+**Note:** If you `ctrl+C` the command, this does not cancel the slurm jobs if they are already running. You have to manually use scancel to cancel the running jobs. Use `squeue --me` to see running jobs under your account.
 
 ### Parameter Sweeps with Hydra
 
@@ -211,16 +213,18 @@ vec_jobs/<timestamp>/
 │  ├── <base-slurm-job-ID>/  # If there is only 1 run, then all the submitit logs will be in here instead
 │  │   └── <slurm-job-ID>_submission.sh  # The sbatch script used to submit all the slurm jobs
 │  ├── <base-slurm-job-ID>_<hydra-run-id>/  # This is the run's slurm-job-ID, one dir for each run
-│  │   ├── <base-slurm-job-ID>_<hydra-run-id>_log.err  # stderr
-│  │   ├── <base-slurm-job-ID>_<hydra-run-id>_log.out  # stdout
-│  │   ├── <base-slurm-job-ID>_<hydra-run-id>_result.pkl
-│  │   └── <base-slurm-job-ID>_submitted.pkl
+│  │   │   # <slurm-job-id> = <base-slurm-job-id>_<hydra-run-id>
+│  │   ├── <slurm-job-ID>_<process-id>_log.err  # stderr
+│  │   ├── <slurm-job-ID>_<process-id>_log.out  # stdout
+│  │   ├── <slurm-job-ID>_<process-id>_result.pkl  # You can you have multiple processes running within one job
+│  │   ...
+│  │   └── <slurm-job-ID>_submitted.pkl
 │  ...
 │  └── <slurm-jon-ID>/
 │      ...
 │      └── ...
 │── <hydra-run-id>/ # This is the actual job/run output. One for each run
-│  ├── launch.log  # Only contains log messages, not stdout or stderr
+│  ├── <hydra.job.name>.log  # Hydra Logs: Only contains log messages, not stdout or stderr
 │  ├── outputs/  # Contains model outputs saved to cfg.paths.out_dir (eg. checkpoints)
 │  └── hydra_configs
 │      ├── config.yaml  # The final config passed to the function decorated by @hydra.main (for this run)
@@ -238,4 +242,5 @@ vec_jobs/<timestamp>/
 - print messages will not be sent to launch.log, use a logger instead (see example templates)
 - `multirun.yaml` and `hydra.yaml` will contain placeholder values (eg. `${oc.select:compute.mem_gb}`). These are used to fill in the values with values from other parts of the config or other configs included in the defaults. See hydra documentation for more detail.
 - When doing a hyperparameter sweep, a run is performed for each unique combination of hyperparameters. Each run is run as a separate slurm job with a unique slurm ID.
-  - All the runs are submitted as separate jobs using the slurm `--array` feature. Therefore there is a base slurm job id shared by all runs. The slurm-job-id actually used by slurm for each run is a combination of the base slurm job ID and the hydra run ID (eg. `1186868_0`).
+  - All the runs are submitted as separate jobs using the slurm `--array` feature. Therefore there is a base slurm job id shared by all runs. The slurm-job-id actually used by slurm for each run is a combination of the base slurm job ID and the hydra run ID (eg. `1186868_1`). For multirun jobs you might end up with log files like: `1186868_1_0`. Not sure what the second integer is as it doesn't necessarily line up with the hydra run id. Most likely a process ID.
+- The hydra logs are a good place to start to see the output of your job. If information is missing, or if an error occurs, the submitit logs are the source of truth and should contain everything. Sometimes exceptions are not captured in the hydra logs.
