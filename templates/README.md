@@ -44,10 +44,12 @@ templates/
 └── configs/              # Hydra + Submitit configs
 ```
 
-Each template directory is self-contained: it has a `launch.py`, a `train.py`, and a `config.yaml`.
-The `configs/` directory defines Slurm presets and shared Hydra + Submitit settings.
+Each template directory contains a `launch.py`, a `train.py`, and a `config.yaml`.
+The `configs/` directory defines Slurm presets and shared Hydra + Submitit settings. 
 
-Hydra starts from `configs/_global.yaml` and pulls in the appropriate entries from `configs/user.yaml` and `configs/compute/*`. The launch script within each template then merges the template's own local `config.yaml` before forwarding the resolved configuration to Submitit; CLI overrides (e.g. `compute=killarney/h100_1x`) are applied in that final merge, so every launch script receives a single, fully-specified config that Submitit uses to submit or run locally.
+The launch script contains the `hydra.main` decorator which points hydra to the templates local `config.yaml`. This `config.yaml` imports the `_global` config from the `configs/` directory, which in turn imports other preset configs.
+
+Most templates import the `_global.yaml` config from the `configs/` directory as a base experimental setup, and are therefore dependent on it's settings. The global config in turn imports other preset configs such as the `user.yaml` config and the compute configs. Modifying the `_global.yaml` file may break some of the other templates. Therefore be careful making changes to `_global.yaml` settings, if the settings do not need to be globally applied to all templates consider including them in the local config instead. Hydra takes the starting local config, populates it with the additional fields from all its dependencies, and provides that to submitit to launch a job. Submitit executes the function decorated by `hydra.main` as a slurm job. The fully specified config that was provided to slurm is passed to that function as an argument.
 
 The `_global.yaml` config contains the bulk of the autoconfiguration. Placeholders are used to automatically fill values with values from other configuration files. `hydra.launcher` arguments largely align with the CLI arguments available for the [sbatch](https://slurm.schedmd.com/sbatch.html) command. See [this](https://hydra.cc/docs/plugins/submitit_launcher/) page for the officialy available hydra slurm launcher parameters. Note that the majority of the parameters are sourced from the selected `compute` config.
 
@@ -64,9 +66,9 @@ user:
     #   qos: m2  # example Bon Echo QoS
 ```
 
-[//]: <> (why is qos used as example of additional parameter here when it is an official launcher parameter that seems to be sourced from compute config?)
-
 Uncomment and edit `additional_parameters` entries as needed. This field is solely for sbatch arguments not already available in the [Hydra Submitit Slurm Launcher Plugin](https://hydra.cc/docs/plugins/submitit_launcher/). Use CLI overrides for alternate accounts or QoS when launching jobs, for example `... user.slurm.account=ACCOUNT_B user.slurm.additional_parameters.qos=fast`.
+
+[//]: <> (Will specifying qos as an additional parameter overwrite the qos in compute setting?)
 
 2) Pick a compute preset to use in the next section:
 - `templates/configs/compute/bon_echo/*` (A40, A100)
@@ -75,7 +77,7 @@ Uncomment and edit `additional_parameters` entries as needed. This field is sole
 
 ## Running Templates
 
-All launchers follow the same pattern: use `uv run python -m <package>.launch` with Hydra overrides that select compute presets, requeue behaviour, and any template-specific hyperparameters. uv will automatically detect the virtual environment located in `.venv` of your CWD. The templates are automatically loaded as python modules by `uv`. If you add your own template you will have to sync the virtual environment using `uv sync`.
+All launchers follow the same pattern: use `uv run python -m <templatee>.launch` with Hydra overrides that select compute presets, requeue behaviour, and any template-specific hyperparameters. uv will automatically detect the virtual environment located in `.venv` of your CWD. The templates are automatically loaded as python modules by `uv`. If you add your own template you will have to sync the virtual environment using `uv sync`.
 
 ### Command Pattern
 
@@ -83,17 +85,17 @@ All launchers follow the same pattern: use `uv run python -m <package>.launch` w
 uv run python -m <template_pkg>.launch \
   compute=<cluster>/<preset> \
   requeue=<on|off> \
-  <other.global.user.or.compute.overrides> \
-  +<other.local.overrides> \
+  <config.overridess> \
+  <new-keys> \
   --multirun
 ```
 
 -  `<template_pkg>`: The module path to the template launch script (eg.  `mlp.single`)
 - `compute=<cluster>/<preset>`: chooses the Slurm resources defined under `templates/configs/compute/` (or a custom preset you add).
 - `requeue=<on|off>`: toggles the Submitit requeue flag described in the checkpointing section.
-- Additional Hydra overrides use `key=value` syntax; nested keys follow the YAML structure (e.g., `compute.mem_gb=32`).
-- Keys not already present in `_global.yaml` or it's dependencies (`user.yaml`, compute yamls) must be prepended with a `+`. This includes new keys as well as those merged in later such as the templates local `config.yaml` (eg. `trainer.learnin_rate`).
-- Use of `--multirun` is required to use the submitit slurm launcher, even if you are only performing a single run. Otherwise the model will attempt to train locally.
+- Additional config overrides use `key=value` syntax; nested keys follow the YAML structure (e.g., `compute.mem_gb=32`).
+- Keys not already present in the local `config.yaml` or it's dependencies (`_global.yaml`, `user.yaml`, compute yamls) must be prepended with a `+`. This denotes the key as being new rather than an override.
+- Use of `--multirun` is required to use the submitit slurm launcher, even if you are only performing a single run. Otherwise the model will attempt to train locally on your login node.
 
 ### Examples (single parameter set)
 
@@ -107,7 +109,7 @@ uv run python -m mlp.single.launch compute=killarney/l40s_1x requeue=off --multi
 # Fine-tune a text classifier template with custom learning rate
 uv run python -m llm.text_classification.launch \
   compute=killarney/l40s_1x \
-  +trainer.learning_rate=5e-4 \
+  trainer.learning_rate=5e-4 \
   --multirun
 ```
 
@@ -116,11 +118,6 @@ Your output should look something like this:
 [2025-09-29 11:06:00,546][HYDRA] Submitit 'slurm' sweep output dir : /scratch/$USER/vec_jobs/20250929-110600
 [2025-09-29 11:06:00,546][HYDRA]        #0 : compute=killarney/l40s_1x
 ```
-
-[//]: <> (Why does learning_rate need the + prepended if its already in local config?)
-[//]: <> (Perhaps a little more clarity on this)
-[//]: <> (`+trainer.num_epochs=100` override did not work for mlp.single)
-[//]: <> (multirun.yaml is long and confusing and still contains placeholders. Is there a way to save the final static config yaml?)
 
 Hydra blocks until the job finishes (or fails). For long or interactive sessions, wrap the command in `tmux`, `screen`, or submit a wrapper script as shown below.
 
@@ -141,20 +138,18 @@ uv run python -m llm.text_classification.launch compute=bon_echo/a40_1x --multir
 
 Hydra sweeps expand comma-separated value lists into Cartesian products and schedule each configuration as a separate Submitit job. Output directories are numbered based on Hydra's sweep index.
 
-[//]: <> (Sweep seems to work, but checkpoints overwrite eachother i'm assuming? Hydra does not create subdirectories in outputs for sweep.l)
-
 ```bash
 # Sweep learning rate and hidden size for the MLP template
 uv run python -m mlp.single.launch \
-  +trainer.learning_rate=1e-2,1e-3 \
-  +trainer.hidden_dim=64,128 \
+  trainer.learning_rate=1e-2,1e-3 \
+  trainer.hidden_dim=64,128 \
   compute=bon_echo/a40_1x \
   --multirun
 
 # Sweep batch size and LR for the VLM captioning template
 uv run python -m vlm.image_captioning.launch \
-  +trainer.batch_size=8,16,32 \
-  +trainer.learning_rate=1e-4,5e-5 \
+  trainer.batch_size=8,16,32 \
+  trainer.learning_rate=1e-4,5e-5 \
   compute=killarney/h100_1x \
   --multirun
 ```
@@ -171,7 +166,7 @@ Your output for a sweep should look something like this:
 
 ### Monitoring Jobs
 
-By default, Hydra and Submitit create the working directory at `~/vec_jobs/<timestamp>` (see `configs/_global.yaml`). Override it when needed with flags such as `paths.work_root=/scratch/$USER` or `work_dir=/scratch/$USER/vec_jobs/${experiment_name}`.
+By default, Hydra and Submitit create a `vec_jobs/<timestamp>` working directory in your scratch folder (`/scratch/$USER` on killarney, `/scratch/ssd004/scratch/u$USER` on bon-echo). Override it when needed with flags such as `paths.work_root=/scratch/$USER` or `paths.work_dir=/scratch/$USER/vec_jobs/${experiment_name}`. These are set in `configs/_global.yaml`.
 
 ```bash
 # Check SLURM job status
@@ -189,12 +184,14 @@ Checkpointing lets Submitit resubmit interrupted jobs (preemption, timeout, manu
 
 Submitit’s official [checkpointing guide](https://github.com/facebookincubator/submitit/blob/main/docs/checkpointing.md) covers how the `checkpoint()` hook works under the hood and provides additional patterns (e.g., swapping callables, partial pickling) if you need more control.
 
+Note that in order to prevent multirun jobs (such as parameter sweeps) from overwriting eachothers configs, the checkpoint output directory must be different for each run. We handle this in the launch script by using the `hydra.runtime.output_dir` to set a dynamic output dir in `cfg.paths.out_dir`. The runtime output dir will always be unique to each run. For multirun sweeps, subdirectories are automatically generated by hydra. You can configure hydra to customize how these subdirectoires are named but by default they're just monotonically increasing integers.
+
 **Toggling requeue behaviour**
 - Defaults live in `configs/requeue/{on,off}.yaml`. Pick the version you want via `requeue=on` or `requeue=off` on the CLI. (`off` disables the Slurm `--requeue` flag.)
 - Global safeguards such as `max_num_timeout` come from `configs/_global.yaml`; adjust them if your workload needs more automatic retries.
 
 **Implementation checklist**
-1. Save checkpoints regularly inside `cfg.work_dir` (e.g., `outputs/checkpoint-epoch-*`). Capture model weights, optimizer state, and any metadata you need to resume.
+1. Save checkpoints regularly inside `cfg.paths.out_dir` (e.g., `outputs/checkpoint-epoch-*`). Capture model weights, optimizer state, and any metadata you need to resume.
 2. On startup (`__call__`), look for the most recent checkpoint and restore state before training continues. The templates include helper methods (`_latest_checkpoint`) you can reuse or extend.
 3. Ensure your `checkpoint()` method returns a `DelayedSubmission` that recreates the callable with the same arguments. If you need custom behaviour (changing hyperparameters, skipping corrupt steps), instantiate a new callable and pass it to `DelayedSubmission` instead of `self`.
 4. Test the flow by requeueing a running job (`scancel --signal=USR1 <jobid>` or Submitit's `job._interrupt(timeout=True)`) to confirm state is restored as expected.
@@ -202,3 +199,41 @@ Submitit’s official [checkpointing guide](https://github.com/facebookincubator
 ## Resources
 - Submitit: https://github.com/facebookincubator/submitit
 - Hydra Submitit launcher: https://hydra.cc/docs/plugins/submitit_launcher
+
+## Understanding Job Outputs
+
+After running a template, the output artifacts will be saved to the work_dir specified in `_global.yaml`. By default this is `$SCRATCH_DIR/vec_jobs/<timestamp>`. The directory structure for you're outputs will look something like this:
+
+```
+vec_jobs/<timestamp>/
+├── multirun.yaml  # Template config used by hydra for all runs
+├── submitit_logs/
+│  ├── <slurm-job-ID>/  # One for each run (job submitted by hydra)
+│  │   ├── <slurm-job-ID>_<hydra-run-id>_log.err  # stderr
+│  │   ├── <slurm-job-ID>_<hydra-run-id>_log.out  # stdout
+│  │   ├── <slurm-job-ID>_<hydra-run-id>_result.pkl
+│  │   ├── <slurm-job-ID>_submission.sh  # The sbatch script that was submitted for this job
+│  │   └── <slurm-job-ID>_submitted.pkl
+│  ...
+│  └── <slurm-jon-ID>/
+│      ...
+│      └── ...
+│── <hydra-run-id>/ # This is the actual job/run output. One for each run
+│  ├── launch.log  # Only contains log messages, not stdout or stderr
+│  ├── outputs/  # Contains model outputs saved to cfg.paths.out_dir (eg. checkpoints)
+│  └── hydra_configs
+│      ├── config.yaml  # The final config passed to the function decorated by @hydra.main (for this run)
+│      ├── overrides.yaml  # CLI overrides that were used for this run
+│      ├── hydra.yaml  # The hydra settings that were used for this run (some placeholder values still present)
+│      └── hydra_resolved.yaml  # The hydra settings that were used for this run (with all placeholder values resolved)
+│
+...
+└── <hydra-run-id>/ 
+    ...
+    └── ...
+```
+
+**Notes:**
+- print messages will not be sent to launch.log, use a logger instead (see example templates)
+- `multirun.yaml` and `hydra.yaml` will contain placeholder values (eg. `${oc.select:compute.mem_gb}`). These are used to fill in the values with values from other parts of the config or other configs included in the defaults. See hydra documentation for more detail.
+- When doing a hyperparameter sweep, a run is performed for each unique combination of hyperparameters. Each run is run as a separate slurm job with a unique slurm ID.

@@ -1,3 +1,7 @@
+defaults:
+  - _global  # Import global config settings
+  - _self_  # Must include the settings from this file
+
 trainer:
   model_name: distilbert-base-uncased
   dataset_name: ag_news
@@ -11,3 +15,7 @@ trainer:
   logging_steps: 50
   save_steps: 100
   eval_steps: 200
+
+hydra:
+  searchpath:
+    - pkg://configs  # Include configs from the configs package in the searchpath

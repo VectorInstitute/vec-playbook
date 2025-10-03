@@ -1,12 +1,17 @@
 """Distributed MLP training using PyTorch DDP."""
 
 import os
+import logging
 
 import submitit
 import torch
 import torch.distributed as dist
 from torch import nn, optim
 from torch.utils.data import DataLoader, DistributedSampler, TensorDataset
+from omegaconf import DictConfig, OmegaConf
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_dummy_data(
@@ -63,7 +68,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         }
 
         torch.save(checkpoint, os.path.join(save_dir, "model.pt"))
-        print(f"Checkpoint saved at epoch {epoch}")
+        logger.info(f"Checkpoint saved at epoch {epoch}")
 
     def _setup_distributed(self, rank, world_size):
         """Initialize distributed training."""
@@ -76,9 +81,9 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
 
     def _initialize_device_and_model(self, cfg, local_rank):
         """Initialize device and model."""
-        input_dim = getattr(cfg, "input_dim", 10)
-        hidden_dim = getattr(cfg, "hidden_dim", 64)
-        num_classes = getattr(cfg, "num_classes", 3)
+        input_dim = OmegaConf.select(cfg, "trainer.input_dim", default=10)
+        hidden_dim = OmegaConf.select(cfg, "trainer.hidden_dim", default=64)
+        num_classes = OmegaConf.select(cfg, "trainer.num_classes", default=3)
 
         # Setup device
         if torch.cuda.is_available():
@@ -100,9 +105,9 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
 
     def _initialize_data_and_loader(self, cfg, world_size, rank):
         """Initialize dataset and dataloader with distributed sampler."""
-        input_dim = getattr(cfg, "input_dim", 10)
-        num_classes = getattr(cfg, "num_classes", 3)
-        batch_size = getattr(cfg, "batch_size", 32)
+        input_dim = OmegaConf.select(cfg, "trainer.input_dim", default=10)
+        num_classes = OmegaConf.select(cfg, "trainer.num_classes", default=3)
+        batch_size = OmegaConf.select(cfg, "trainer.batch_size", default=32)
 
         dataset = create_dummy_data(1000, input_dim, num_classes)
         sampler = (
@@ -127,7 +132,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
             checkpoint_path = os.path.join(self.ckpt_dir, "model.pt")
             if os.path.exists(checkpoint_path):
                 if rank == 0:
-                    print(f"Resuming from checkpoint: {self.ckpt_dir}")
+                    logger.info(f"Resuming from checkpoint: {self.ckpt_dir}")
                 checkpoint = torch.load(checkpoint_path, map_location=device)
 
                 # Load model state (handle DDP wrapper)
@@ -139,7 +144,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                 start_epoch = checkpoint["epoch"] + 1
                 if rank == 0:
-                    print(f"Resumed from epoch {checkpoint['epoch']}")
+                    logger.info(f"Resumed from epoch {checkpoint['epoch']}")
         return start_epoch
 
     def _train_epoch(
@@ -188,14 +193,19 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
 
     def __call__(self, cfg):
         """Train the MLP model with DDP."""
-        out_dir = os.path.join(cfg.work_dir, "outputs")
+        cfg : DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
+
+        # Create output directory
+        out_dir = cfg.paths.out_dir
         os.makedirs(out_dir, exist_ok=True)
+
+        # Get ckpt dir
         self.ckpt_dir = self._latest_checkpoint(out_dir)
 
         # Configuration
-        lr = getattr(cfg, "learning_rate", 1e-3)
-        num_epochs = getattr(cfg, "num_epochs", 1000)
-        seed = getattr(cfg, "seed", 42)
+        lr = OmegaConf.select(cfg, "trainer.learning_rate", default=1e-3)
+        num_epochs = OmegaConf.select(cfg, "trainer.num_epochs", default=1000)
+        seed = OmegaConf.select(cfg, "trainer.seed", default=42)
 
         # Get distributed training info from environment
         rank = int(os.environ.get("RANK", "0"))
@@ -203,8 +213,8 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         world_size = int(os.environ.get("WORLD_SIZE", "1"))
 
         if rank == 0:
-            print(f"Starting DDP MLP training with seed {seed}")
-            print(f"World size: {world_size}, Local rank: {local_rank}")
+            logger.info(f"Starting DDP MLP training with seed {seed}")
+            logger.info(f"World size: {world_size}, Local rank: {local_rank}")
 
         # Set seed for reproducibility (same seed on all processes)
         torch.manual_seed(seed)
@@ -218,7 +228,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         device, model = self._initialize_device_and_model(cfg, local_rank)
 
         if rank == 0:
-            print(f"Using device: {device}")
+            logger.info(f"Using device: {device}")
 
         # Wrap model with DDP
         if world_size > 1:
@@ -236,7 +246,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         start_epoch = self._load_checkpoint_if_exists(model, optimizer, device, rank)
 
         if rank == 0:
-            print(f"Training from epoch {start_epoch} to {num_epochs}...")
+            logger.info(f"Training from epoch {start_epoch} to {num_epochs}...")
 
         # Training loop with DDP
         for epoch in range(start_epoch, num_epochs):
@@ -252,11 +262,11 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
                 rank,
             )
 
-            # Print metrics only on rank 0
+            # Log metrics only on rank 0
             if rank == 0:
                 acc = 100.0 * correct / total
                 avg_loss = loss_sum / len(loader)
-                print(f"Epoch {epoch}: loss={avg_loss:.4f} acc={acc:.2f}%")
+                logger.info(f"Epoch {epoch}: loss={avg_loss:.4f} acc={acc:.2f}%")
 
                 if epoch % 100 == 0 or epoch == num_epochs - 1:
                     if world_size > 1:
@@ -266,7 +276,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
                     )
 
         if rank == 0:
-            print("Training completed!")
+            logger.info("Training completed!")
 
         # Clean up distributed training
         if world_size > 1 and dist.is_initialized():

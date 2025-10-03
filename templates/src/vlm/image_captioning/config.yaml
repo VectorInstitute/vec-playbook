@@ -1,3 +1,7 @@
+defaults:
+  - _global  # Import global config settings
+  - _self_  # Must include the settings from this file
+
 trainer:
   model_name: Salesforce/blip-image-captioning-base
   dataset_name: cifar10
@@ -6,3 +10,7 @@ trainer:
   learning_rate: 1e-5
   print_every: 50
   seed: 42
+
+hydra:
+  searchpath:
+    - pkg://configs  # Include configs from the configs package in the searchpath
