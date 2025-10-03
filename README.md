@@ -13,7 +13,7 @@ See [getting-started](./getting-started) for documentation on using Vector compu
 
 ## Templates
 
-See [templates](./templates) for training templates with Hydra + Submitit.
+See [templates](./templates) for training templates that use Hydra + Submitit to structure experiments.
 
 - Code lives under: [templates/src](./templates/src)
 - Cluster configs live under: [templates/configs](./templates/configs)

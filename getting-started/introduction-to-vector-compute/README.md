@@ -66,6 +66,7 @@ ssh-ed25519 AAAA5AA7OZOZ7NRB1acK54bB47h58N6AIEX4zDziR1r0nM41d3NCG0fgCArjUD45pr13
 
 Next, open the SSH Keys page in your Alliance account: [https://ccdb.alliancecan.ca/ssh_authorized_keys](https://ccdb.alliancecan.ca/ssh_authorized_keys). Paste your key into the SSH Key field, give it a name (typically the host name of the computer where you generated it) and hit Add Key.
 
+**NOTE:** You may need to wait up to 30 minutes after adding your ssh key for it to work when trying to login via ssh. Have lunch and come back.
 
 ## SSH Access
 
@@ -127,6 +128,8 @@ In addition to your home directory, you have a minimum of additional 250 GB scra
 
 A detailed description of the scratch purging policy is available on the Alliance Canada website: [https://docs.alliancecan.ca/wiki/Scratch_purging_policy](https://docs.alliancecan.ca/wiki/Scratch_purging_policy)
 
+Your scratch space directory will not exist when you initially log in. To have it set up send a request to [ops-help@vectorinstitute.ai](mailto:ops-help@vectorinstitute.ai). Include the name of your PI in the email.
+
 ## Shared projects
 
 For collaborative projects where many people need access to the same files, you need a shared project space. These are stored at `/project`.
@@ -140,7 +143,7 @@ To reduce the storage footprint for each user, we've made various commonly-used 
 Instead of copying these datasets on your home directory, you can create a symlink via:
 
 ```
-ln -s /dataset/PATH_TO_DATASET ~/PATH_OF_LINK # path of link can be some place in your home directory so that PyTorch/TF can pick up the dataset to these already downloaded directories.
+ln -s /datasets/PATH_TO_DATASET ~/PATH_OF_LINK # path of link can be some place in your home directory so that PyTorch/TF can pick up the dataset to these already downloaded directories.
 ```
 
 ## Shared model weights
@@ -151,6 +154,61 @@ Similar to datasets, model weights are typically very large and can be shared am
 
 Unlike the legacy Bon Echo (Vaughan) cluster, there is no dedicated checkpoint space in the Killarney cluster. Now that the `$SCRATCH` space has been greatly expanded, please use this for any training checkpoints.
 
+
+# Migration from legacy Vaughan (Bon Echo) Cluster
+
+**NOTE:** The approach for migrating detailed here requires that you set up a second ssh key on killarney. Your public ssh key on the vaughan cluster will be different than the one on your local machine.
+
+The easiest way to migrate data from the legacy Vaughan (Bon Echo) Cluster to Killarney is by using a file transfer command (likely `rsync` or `scp`) from an SSH session.
+
+Start by connecting via https://support.vectorinstitute.ai/Killarney?action=AttachFile&do=view&target=User+Guide+to+Killarney+for+Vector+Researchers.pdfsh into the legacy Bon Echo (Vaughan) cluster:
+
+
+```
+username@my-desktop:~$ ssh v.vectorinstitute.ai
+Password:
+Duo two-factor login for username
+
+Enter a passcode or select one of the following options:
+
+ 1. Duo Push to XXX-XXX-3089
+ 2. SMS passcodes to XXX-XXX-3089
+
+Passcode or option (1-2): 1
+Success. Logging you in...
+Welcome to the Vector Institute HPC - Vaughan Cluster
+
+Login nodes are shared among many users and therefore
+must not be used to run computationally intensive tasks.
+Those should be submitted to the slurm scheduler which
+will dispatch them on compute nodes.
+
+For more information, please consult the wiki at
+  https://support.vectorinstitute.ai/Computing
+For issues using this cluster, please contact us at
+  ops-help@vectorinstitute.ai
+If you forget your password, please visit our self-
+  service portal at https://password.vectorinstitute.ai.
+
+Last login: Mon Aug 18 07:28:24 2025 from 184.145.46.175
+```
+
+Next, use the `rsync` command to copy files across to the Killarney cluster. In the following example, I'm copying the contents of a folder called `my_projects` to my Killarney home directory.
+
+```
+username@v4:~$ cd ~/my_projects
+username@v4:~/my_projects$ rsync -avz * killarney_username@killarney.alliancecan.ca:~/my_projects~
+Duo two-factor login for username
+
+Enter a passcode or select one of the following options:
+
+ 1. Duo Push to Phone
+
+Passcode or option (1-1): 1
+Success. Logging you in...
+sending incremental file list
+[...]
+```
 
 # Killarney GPU resources
 
@@ -330,9 +388,12 @@ gpubase_l40s_b3     32/32/0/64          gpu:l40s:4(IDX:0-3) gpu:l40s:4
 [...]
 ```
 
+For CPU's, A/I/OT stands for **A**llocated, **I**dle, **O**ther (eg. down) and **T**otal. Even if the GPU's on a node are available, if there are no Idle CPU's on the node then you won't be able to use it.
+
 
 # Software Environments
 
+## Pre-installed Environments
 The cluster comes with preinstalled software environments called **modules**. These will allow you to access many different versions of Python, VS Code Server, RStudio Server, NodeJS and many others. 
 
 To see the available preinstalled environments, run:
@@ -347,7 +408,8 @@ To use an environment, use `module load`. For example, if you need to use Python
 module load python/3.10.12
 ```
 
-If there isn't a preinstalled environment for your needs, you can use Poetry or python-venv. Here is a quick example of how to use python venv.
+## Custom Environments
+If there isn't a preinstalled environment for your needs, you can use [uv](https://docs.astral.sh/uv/), or python-venv. For ongoing projects it is highly recommended to use uv to manage dependencies. To just run something quickly one time, python-venv might be easier. Here is a quick example of how to use python venv.
 
 In the login node run the following:
 
@@ -407,7 +469,7 @@ When a job exceeds its time limit, it will get stopped by the Slurm scheduler. F
 
 In order to avoid losing your work when your job exits, you will need to implement checkpoints - periodic snapshots of your work that you load from so you can stop and resume without much lost work.
 
-On the legacy Bon Echo cluster, there was a dedicated checkpoint space in the file system for checkpoints. **⚠️ In Killarney, there is no dedicated checkpoint space.** Users are expected to manage their own checkpoints under their `$SCRATCH` folder.
+On the legacy Bon Echo cluster, there was a dedicated checkpoint space in the file system for checkpoints. **⚠️ In Killarney, there is no dedicated checkpoint space.** Users are expected to manage their own checkpoints under their `$SCRATCH` folder. Recall that your scratch folder is not permanent, and so you'll want to move any important checkpoints to you're home or project folder.
 
 
 # Support

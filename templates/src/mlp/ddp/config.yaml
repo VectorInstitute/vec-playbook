@@ -1,3 +1,7 @@
+defaults:
+  - _global  # Import global config settings
+  - _self_  # Must include the settings from this file
+  
 trainer:
   input_dim: 10
   hidden_dim: 64
@@ -6,3 +10,7 @@ trainer:
   learning_rate: 1e-3
   num_epochs: 1000
   seed: 42
+
+hydra:
+  searchpath:
+    - pkg://configs  # Include configs from the configs package in the searchpath
