@@ -8,7 +8,7 @@ It leverages the `code-server` module that is available on the Killarney cluster
 
 Submit using `sbatch`:
 ```
-sbatch jupyter-server.sh
+sbatch vscode-server.sh
 ```
 
 ## Connect to the server

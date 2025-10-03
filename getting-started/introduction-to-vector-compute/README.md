@@ -4,6 +4,8 @@ This guide covers important details and examples for accessing and using Vector'
 
 # Table of Contents
 
+- [Introduction to Vector Compute](#introduction-to-vector-compute)
+- [Table of Contents](#table-of-contents)
 - [Logging onto Killarney](#logging-onto-killarney)
   - [Getting an Account](#getting-an-account)
   - [Public Key Setup](#public-key-setup)
@@ -15,42 +17,42 @@ This guide covers important details and examples for accessing and using Vector'
   - [Shared datasets](#shared-datasets)
   - [Shared model weights](#shared-model-weights)
   - [Training checkpoints](#training-checkpoints)
-- [Migration from legacy Vaughan (Bon Echo) Cluster](#migration-from-legacy-vaughan-bon-echo-cluster)
 - [Killarney GPU resources](#killarney-gpu-resources)
 - [Using Slurm](#using-slurm)
-  - [View jobs in the Slurm cluster (squeue)](#view-jobs-in-the-slurm-cluster-squeue)
+  - [View jobs in a Slurm cluster (squeue)](#view-jobs-in-a-slurm-cluster-squeue)
   - [Submit a new Slurm job (sbatch)](#submit-a-new-slurm-job-sbatch)
   - [Interactive sessions (srun)](#interactive-sessions-srun)
+  - [SSH to sbatch job](#ssh-to-sbatch-job)
   - [Accessing specific GPUs](#accessing-specific-gpus)
   - [View cluster resource utilization (sinfo)](#view-cluster-resource-utilization-sinfo)
-  - [Jupyter notebooks](#jupyter-notebooks)
 - [Software Environments](#software-environments)
 - [Time Limits](#time-limits)
   - [Tiers](#tiers)
   - [Automatic Restarts](#automatic-restarts)
   - [Checkpoints](#checkpoints)
-- [Useful Links and Resources](#useful-links-and-resources)
 - [Support](#support)
 
 # Logging onto Killarney
 
-The Alliance documentation provides lots of general information about accessing the Killarney cluster: [https://docs.alliancecan.ca/wiki/SSH](https://docs.alliancecan.ca/wiki/SSH)
+The Alliance documentation provides some general information about the Killarney cluster: [https://docs.alliancecan.ca/wiki/Killarney](https://docs.alliancecan.ca/wiki/Killarney)
 
 ## Getting an Account
 
-Please read the [user account guide](https://support.vectorinstitute.ai/Killarney?action=AttachFile&do=view&target=User+Guide+to+Killarney+for+Vector+Researchers.pdf) for full information about getting a Killarney account.
+To log into Killarney, the first thing you need is an account. Please read the Alliance's page [Apply for a CCDB account](https://www.alliancecan.ca/en/our-services/advanced-research-computing/account-management/apply-account) for all the steps needed here.
 
 ## Public Key Setup
 
-For SSH access, you need to add a public key in your Alliance Canada account.
+For SSH access, you **must** add a public key in your Alliance Canada account. The Alliance provides full instructions for this at [https://docs.alliancecan.ca/wiki/SSH_Keys](https://docs.alliancecan.ca/wiki/SSH_Keys). 
 
-On the computer you'll be connecting from, generate a SSH key pair with the following command. When prompted, use the default file name and leave the passphrase empty.
+The following steps are a distilled version of these instructions for MacOS and Linux.
+
+On the personal computer you'll be connecting from, generate a SSH key pair with the following command. When prompted, use the default file name and leave the passphrase empty.
 
 ```
 ssh-keygen -t ed25519 -C "your_email@example.com"
 ```
 
-Output the key into your terminal window:
+Output the public key into your terminal window:
 
 ```
 cat ~/.ssh/id_ed25519.pub
@@ -68,8 +70,7 @@ Next, open the SSH Keys page in your Alliance account: [https://ccdb.alliancecan
 
 ## SSH Access
 
-From a terminal, use the `ssh` command to log onto the cluster via [killarney.alliancecan.ca](killarney.alliancecan.ca):
-
+From a terminal, use the `ssh` command to log onto the cluster via **killarney.alliancecan.ca**:
 
 ```
 username@my-desktop:~$ ssh killarney_username@killarney.alliancecan.ca
@@ -105,12 +106,11 @@ The hostname **killarney.alliancecan.ca** load balances ssh connections across t
 
 # Killarney File System Intro
 
-
 ## Home directories
 
 When you first log onto the Killarney cluster, you will land in your home directory. This can be accessed at: `/home/username `or just` ~/`
 
-Home directories have 50 GB of storage space. To check the amount of free space in your home directory, use the` diskusage_report `command:
+Home directories have 50 GB of storage space. To check the amount of free space in your home directory, use the `diskusage_report` command:
 
 
 ```
@@ -122,7 +122,7 @@ username@klogin02:~$ diskusage_report
 
 ## Scratch space
 
-In addition to your home directory, you have a minimum of additional 250 GB scratch space (up to 2 TB, depending on your user level) available in the following location: `/scratch/$USER` or simply` $SCRATCH.`
+In addition to your home directory, you have a minimum of additional 250 GB scratch space (up to 2 TB, depending on your user level) available in the following location: `/scratch/$USER` or simply `$SCRATCH`.
 
 **⚠️ Unlike your home directory, this scratch space is temporary. It will get automatically purged of files that have not been accessed in 60 days.**
 
@@ -132,30 +132,23 @@ Your scratch space directory will not exist when you initially log in. To have i
 
 ## Shared projects
 
-For collaborative projects where many people need access to the same files, you need a shared project space. These are generally stored at `/project`
+For collaborative projects where many people need access to the same files, you need a shared project space. These are stored at `/project`.
 
 To set up a shared project space, send a request to [ops-help@vectorinstitute.ai](mailto:ops-help@vectorinstitute.ai). Describe what the project is about, which users need access, how much disk space you need, also an end date when it can be removed.
 
-
 ## Shared datasets
 
-To reduce the storage footprint for each user, we've made various commonly-used datasets like MIMIC and IMAGENET available for everyone to use. These are generally stored at /datasets
+To reduce the storage footprint for each user, we've made various commonly-used datasets like MIMIC and IMAGENET available for everyone to use. These are stored at `/datasets`
 
-Instead of copying these datasets on your home directory, you can create a symlink via
-
+Instead of copying these datasets on your home directory, you can create a symlink via:
 
 ```
 ln -s /datasets/PATH_TO_DATASET ~/PATH_OF_LINK # path of link can be some place in your home directory so that PyTorch/TF can pick up the dataset to these already downloaded directories.
 ```
 
-
-For a list of available datasets please see [Current Datasets](https://support.vectorinstitute.ai/CurrentDatasets)
-
-
 ## Shared model weights
 
-Similar to datasets, model weights are typically very large and can be shared among many users. We've made various common model weights such as Llama3, Mixtral and Stable Diffusion available at /`model-weights`
-
+Similar to datasets, model weights are typically very large and can be shared among many users. We've made various common model weights such as Llama3, Mixtral and Stable Diffusion available at `/model-weights`
 
 ## Training checkpoints
 
@@ -228,52 +221,48 @@ Since the cluster has many users and limited resources, we use the Slurm job sch
 
 # Using Slurm
 
-The Alliance documentation provides lots of general information about submitting jobs using the Slurm job scheduler: [https://docs.alliancecan.ca/wiki/Running_jobs](https://docs.alliancecan.ca/wiki/Running_jobs)	
+The Alliance documentation provides lots of general information about submitting jobs using the Slurm job scheduler: [https://docs.alliancecan.ca/wiki/Running_jobs](https://docs.alliancecan.ca/wiki/Running_jobs)
 
+For some example Slurm workloads specific to the Killarney cluster (sbatch files, resource configurations, software environments, etc.) see the [Slurm examples](../slurm-examples) provided in this repo.
 
-## View jobs in the Slurm cluster (squeue)
+## View jobs in a Slurm cluster (squeue)
 
-To view all the jobs currently in the cluster, either running, pending or failed, use squeue ([https://slurm.schedmd.com/squeue.html](https://slurm.schedmd.com/squeue.html))
-
+To view all the jobs currently in a cluster, either running, pending or failed, use `squeue`: ([https://slurm.schedmd.com/squeue.html](https://slurm.schedmd.com/squeue.html))
 
 ```
 username@klogin01:~$ squeue
           JOBID     USER      ACCOUNT           NAME  ST  TIME_LEFT NODES CPUS TRES_PER_N MIN_MEM NODELIST (REASON) 
-         505480 username     aip-acct        jupyter   R      41:31     1    4 gres/gpu:l    300G kn141 (None) 
-       504615_8 username     aip-acct         My_JOB   R      50:05     1   32 gres/gpu:l     64G kn054 (None) 
-       504615_9 username     aip-acct         My_JOB   R      53:07     1   32 gres/gpu:l     64G kn038 (None) 
-      504615_10 username     aip-acct         My_JOB   R      54:07     1   32 gres/gpu:l     64G kn039 (None) 
-         499132 username     aip-acct SFBDF_cifar10_   R      54:45     1   32 gres/gpu:3     60G kn135 (None) 
-         505622 username     aip-acct        tus-rec   R      58:39     1   10 gres/gpu:l    128G kn001 (None) 
-      504615_11 username     aip-acct         My_JOB   R    1:00:48     1   32 gres/gpu:l     64G kn041 (None) 
-      504615_12 username     aip-acct         My_JOB   R    1:03:37     1   32 gres/gpu:l     64G kn008 (None) 
-         504859 username     aip-acct         sbatch   R    1:06:59     1   16 gres/gpu:l     64G kn034 (None)
+         505480    user1     aip-acct        jupyter   R      41:31     1    4 gres/gpu:l    300G kn141 (None) 
+       504615_8    user2     aip-acct         My_JOB   R      50:05     1   32 gres/gpu:l     64G kn054 (None) 
+       504615_9    user2     aip-acct         My_JOB   R      53:07     1   32 gres/gpu:l     64G kn038 (None) 
+      504615_10    user2     aip-acct         My_JOB   R      54:07     1   32 gres/gpu:l     64G kn039 (None) 
+         499132    user3     aip-acct SFBDF_cifar10_   R      54:45     1   32 gres/gpu:3     60G kn135 (None) 
+         505622    user4     aip-acct        tus-rec   R      58:39     1   10 gres/gpu:l    128G kn001 (None) 
+      504615_11    user5     aip-acct         My_JOB   R    1:00:48     1   32 gres/gpu:l     64G kn041 (None) 
+      504615_12    user5     aip-acct         My_JOB   R    1:03:37     1   32 gres/gpu:l     64G kn008 (None) 
+         504859    user6     aip-acct         sbatch   R    1:06:59     1   16 gres/gpu:l     64G kn034 (None)
 [...]
 ```
 
-There are many different options for the squeue command. For example, to view jobs that are pending and waiting to start running, use the `-t PENDING` flag:
+There are many different options for the squeue command. For example, to view only jobs that belong to me, use the `--me` flag:
 
 ```
-username@login01:~$ squeue -t PENDING
+username@login01:~$ $ squeue --me
           JOBID     USER      ACCOUNT           NAME  ST  TIME_LEFT NODES CPUS TRES_PER_N MIN_MEM NODELIST (REASON) 
-  505518_[5-48] username     aip-acct         My_JOB  PD    4:00:00     1   32 gres/gpu:l     64G  (Resources) 
-         505759 username     aip-acct grpg_qwen3_4b_  PD 1-00:00:00     1    8 gres/gpu:h     32G  (Resources) 
-         505739 username     aip-acct lora_with_rgb_  PD   16:00:00     1   12 gres/gpu:h    256G  (Priority) 
-         505714 username     aip-acct base_ff_96_fra  PD 1-00:00:00     1   12 gres/gpu:h    256G  (Priority) 
-         505717 username     aip-acct base_ff_128_fr  PD 1-00:00:00     1   12 gres/gpu:h    256G  (Priority) 
-         505300 username     aip-acct vanilla_vq_ima  PD 3-00:00:00     1   10 gres/gpu:h     50G  (Resources)
+         937344 username     aip-acct    imagenet.sh  PD    2:00:00     1    8 gres/gpu:l     64G  (Priority) 
+
 [...]
 ```
 
+Refer to the ([squeue manual page](https://slurm.schedmd.com/squeue.html)) for a full list of options.
 
 ## Submit a new Slurm job (sbatch)
 
-To ask Slurm to run your jobs in the background so you can have your job running, even after logging off, use sbatch https://slurm.schedmd.com/sbatch.html
+To ask Slurm to run your jobs in the background so you can have your job running, even after logging off, use `sbatch`: https://slurm.schedmd.com/sbatch.html
 
-To use sbatch, you need to create a file, specify the configurations within (you can also specify these on the command line) and then run `sbatch my_sbatch_slurm.sh` to get Slurm to schedule it.
+To use sbatch, you need to create a file, specify the configurations within (you can also specify these on the command line) and then run `sbatch my_sbatch_slurm.sh` to get Slurm to schedule it. **Note**: You cannot submit jobs from your home directory. You need to submit them from a scratch or project folder.
 
 Example Hello World sbatch file (hello_world.sh):
-
 
 ```
 #!/bin/bash
@@ -304,10 +293,9 @@ Since Slurm runs your job in the background, it becomes really difficult to see 
 
 Note that the %j in output and error configuration tells Slurm to substitute the job ID where the %j is. So if your job ID is 1234 then your output file will be `hello_world.1234.out` and your error file will be `hello_world.1234.err`.
 
-
 ## Interactive sessions (srun)
 
-To get an interactive session, you must use `srun` (https://slurm.schedmd.com/srun.html)
+If all you want is an interactive session on a GPU node (without the batch job), just use `srun` (https://slurm.schedmd.com/srun.html)
 
 A common configuration for interactive debugging is:
 
@@ -326,8 +314,27 @@ srun: job 501831 has been allocated resources
 username@kn138:/project
 ```
 
-After you see $USER@kn###, you can run your script interactively. It is also possible to 'attach' a new shell session to an existing jobID (either batch or interactive) using the the srun option of --overlap.
+After you see $USER@kn###, you can use this shell session interactively.
 
+## SSH to sbatch job
+
+Any job submitted with sbatch is by definition a *batch* (non-interactive) job. It will sit in the Slurm scheduler queue until the appropriate compute resources become available, then it will run in the background. If you want to attach an interactive session to a running job, you can also do this using `srun`:
+
+```
+srun --pty --overlap --jobid <job-id> -w <hostname> /bin/bash
+```
+
+To obtain the values for `<job-id>` and `<hostname>`, use the `squeue` command as described above. In the following example, I query a list of my jobs and then use the above command to get an interactive shell session:
+
+```
+username@klogin01:~/scratch/imagenet$ sbatch imagenet.sh
+Submitted batch job 937373
+username@klogin01:~/scratch/imagenet$ squeue --me
+          JOBID     USER      ACCOUNT           NAME  ST  TIME_LEFT NODES CPUS TRES_PER_N MIN_MEM NODELIST (REASON) 
+         937373 username     aip-acct    imagenet.sh   R    1:52:20     1    8 gres/gpu:l     64G kn060 (None) 
+username@klogin01:~/scratch/imagenet$ srun --pty --overlap --jobid 937373 -w kn060 /bin/bash
+username@kn060:~/scratch/imagenet$
+```
 
 ## Accessing specific GPUs
 
@@ -348,11 +355,11 @@ srun: job 581667 has been allocated resources
 username@kn178:/scratch$
 ```
 
+Be careful about choosing the correct number of GPUs and correct time limit. The Slurm scheduler will "bill" you for resources used, so a resource-heavy job will reduce your future priority.
 
 ## View cluster resource utilization (sinfo)
 
 To see the availability in a more granular scale use sinfo ([https://slurm.schedmd.com/sinfo.html](https://slurm.schedmd.com/sinfo.html)). For example:
-
 
 ```
 sinfo -N --Format=Partition,CPUsState,GresUsed,Gres
@@ -382,56 +389,6 @@ gpubase_l40s_b3     32/32/0/64          gpu:l40s:4(IDX:0-3) gpu:l40s:4
 ```
 
 For CPU's, A/I/OT stands for **A**llocated, **I**dle, **O**ther (eg. down) and **T**otal. Even if the GPU's on a node are available, if there are no Idle CPU's on the node then you won't be able to use it.
-
-## Jupyter notebooks
-
-To run a Jupyter environment from the cluster, you can request an interactive session and start a Jupyter notebook from there.
-
-First, log into the cluster via ssh to killarney.alliancecan.ca:
-
-```
-ssh username@killarney.alliancecan.ca
-```
-
-Jupyter is not installed by default. You need to install it yourself by running:
-
-```
-pip install jupyter
-export PATH=$PATH:~/.local/bin
-```
-
-Make sure you have a .jupyter folder in your home directory:
-
-```
-mkdir -p ~/.jupyter
-```
-
-Next, use srun to request an interactive session. The following example asks for an A40 GPU and 32 GB of system memory.
-
-```
-srun --gres=gpu:l40s:1 --mem=32G --time 2:00:00 --pty bash
-```
-
-Now start the notebook:
-
-```
-username@kn135:~$ jupyter notebook --ip 0.0.0.0
-[...]
-[I 2025-08-20 11:52:22.038 ServerApp] Serving notebooks from local directory: /scratch/username/slurm/helloworld
-[I 2025-08-20 11:52:22.038 ServerApp] Jupyter Server 2.16.0 is running at:
-[I 2025-08-20 11:52:22.038 ServerApp] http://kn135:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
-[I 2025-08-20 11:52:22.038 ServerApp]     http://127.0.0.1:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
-[I 2025-08-20 11:52:22.038 ServerApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
-[C 2025-08-20 11:52:22.054 ServerApp] 
-    
-    To access the server, open this file in a browser:
-        file:///home/username/.local/share/jupyter/runtime/jpserver-942891-open.html
-    Or copy and paste one of these URLs:
-        http://kn135:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
-        http://127.0.0.1:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
-
-You will need a VPN connection to access this notebook. Once you are connected to the VPN, visit the URL beginning with http://kn####, so in the example above this would be: http://kn135:8888/tree?token=3c2a490424359c8ee69d37c19c38aa27c5f02f61a1b77ecf
-```
 
 
 # Software Environments
@@ -506,28 +463,13 @@ gpubase_l40s_b5    up 7-00:00:00        17/0/0/17 kn[085-101]
 
 ## Automatic Restarts
 
-**NOTE:** There is currently no premption on the Killarney cluster
-
-All jobs in our Slurm cluster have a time limit, after which they will get stopped. For longer running jobs which need more than a few hours, the [Vaughan Slurm Changes](https://support.vectorinstitute.ai/Computing?action=AttachFile&do=view&target=Vector+Vaughan+HPC+Changes+FAQ+2023.pdf) document describes how to automatically restart these.
+When a job exceeds its time limit, it will get stopped by the Slurm scheduler. For longer running jobs which need more than a few hours, see our [Timeout Requeue](../slurm-examples/timeout-requeue/) example which shows how to automatically requeue your job.
 
 ## Checkpoints
 
 In order to avoid losing your work when your job exits, you will need to implement checkpoints - periodic snapshots of your work that you load from so you can stop and resume without much lost work.
 
 On the legacy Bon Echo cluster, there was a dedicated checkpoint space in the file system for checkpoints. **⚠️ In Killarney, there is no dedicated checkpoint space.** Users are expected to manage their own checkpoints under their `$SCRATCH` folder. Recall that your scratch folder is not permanent, and so you'll want to move any important checkpoints to you're home or project folder.
-
-
-# Useful Links and Resources
-
-Computing parent page: https://support.vectorinstitute.ai/Computing
-
-Vaughan valid partition/qos: https://support.vectorinstitute.ai/Vaughan_slurm_changes
-
-Checkpointing: https://support.vectorinstitute.ai/CheckpointExample
-
-Slurm Scheduler: https://support.vectorinstitute.ai/slurm_fairshare
-
-FAQ: https://support.vectorinstitute.ai/FAQ%20about%20the%20cluster
 
 
 # Support
