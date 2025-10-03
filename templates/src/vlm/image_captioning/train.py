@@ -36,8 +36,8 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
 
     def _setup_data(self, processor, cfg):
         """Set up dataset and dataloaders."""
-        dataset_name = OmegaConf.select(cfg, "trainer.dataset_name", "cifar10")
-        batch_size = OmegaConf.select(cfg, "trainer.batch_size", 16)
+        dataset_name = OmegaConf.select(cfg, "trainer.dataset_name", default="cifar10")
+        batch_size = OmegaConf.select(cfg, "trainer.batch_size", default=16)
 
         logger.info(f"Loading dataset: {dataset_name}")
 
@@ -141,7 +141,7 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
         model.train()
         running_loss = 0.0
         seen = 0
-        print_every = OmegaConf.select(cfg, "trainer.print_every", 100)
+        print_every = OmegaConf.select(cfg, "trainer.print_every", default=100)
 
         for batch in train_loader:
             batch_device = {
@@ -218,7 +218,7 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
         self.ckpt_dir = self._latest_checkpoint(out_dir)
 
         # Configuration
-        model_name = OmegaConf.select(cfg, "trainer.model_name", "Salesforce/blip-image-captioning-base")
+        model_name = OmegaConf.select(cfg, "trainer.model_name", default="Salesforce/blip-image-captioning-base")
         lr = OmegaConf.select(cfg, "trainer.learning_rate", default=1e-5)
         num_epochs = OmegaConf.select(cfg, "trainer.num_epochs", default=2)
         seed = OmegaConf.select(cfg, "trainer.seed", default=42)
