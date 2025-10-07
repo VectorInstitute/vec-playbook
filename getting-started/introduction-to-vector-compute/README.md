@@ -17,10 +17,9 @@ This guide covers important details and examples for accessing and using Vector'
   - [Shared datasets](#shared-datasets)
   - [Shared model weights](#shared-model-weights)
   - [Training checkpoints](#training-checkpoints)
-- [Migration from legacy Vaughan (Bon Echo) Cluster](#migration-from-legacy-vaughan-bon-echo-cluster)
 - [Killarney GPU resources](#killarney-gpu-resources)
 - [Using Slurm](#using-slurm)
-  - [View jobs in the Slurm cluster (squeue)](#view-jobs-in-the-slurm-cluster-squeue)
+  - [View jobs in a Slurm cluster (squeue)](#view-jobs-in-a-slurm-cluster-squeue)
   - [Submit a new Slurm job (sbatch)](#submit-a-new-slurm-job-sbatch)
   - [Interactive sessions (srun)](#interactive-sessions-srun)
   - [SSH to sbatch job](#ssh-to-sbatch-job)
@@ -31,28 +30,29 @@ This guide covers important details and examples for accessing and using Vector'
   - [Tiers](#tiers)
   - [Automatic Restarts](#automatic-restarts)
   - [Checkpoints](#checkpoints)
-- [Useful Links and Resources](#useful-links-and-resources)
 - [Support](#support)
 
 # Logging onto Killarney
 
-The Alliance documentation provides lots of general information about accessing the Killarney cluster: [https://docs.alliancecan.ca/wiki/SSH](https://docs.alliancecan.ca/wiki/SSH)
+The Alliance documentation provides some general information about the Killarney cluster: [https://docs.alliancecan.ca/wiki/Killarney](https://docs.alliancecan.ca/wiki/Killarney)
 
 ## Getting an Account
 
-Please read the [user account guide](https://support.vectorinstitute.ai/Killarney?action=AttachFile&do=view&target=User+Guide+to+Killarney+for+Vector+Researchers.pdf) for full information about getting a Killarney account.
+To log into Killarney, the first thing you need is an account. Please read the Alliance's page [Apply for a CCDB account](https://www.alliancecan.ca/en/our-services/advanced-research-computing/account-management/apply-account) for all the steps needed here.
 
 ## Public Key Setup
 
-For SSH access, you need to add a public key in your Alliance Canada account.
+For SSH access, you **must** add a public key in your Alliance Canada account. The Alliance provides full instructions for this at [https://docs.alliancecan.ca/wiki/SSH_Keys](https://docs.alliancecan.ca/wiki/SSH_Keys). 
 
-On the computer you'll be connecting from, generate a SSH key pair with the following command. When prompted, use the default file name and leave the passphrase empty.
+The following steps are a distilled version of these instructions for MacOS and Linux.
+
+On the personal computer you'll be connecting from, generate a SSH key pair with the following command. When prompted, use the default file name and leave the passphrase empty.
 
 ```
 ssh-keygen -t ed25519 -C "your_email@example.com"
 ```
 
-Output the key into your terminal window:
+Output the public key into your terminal window:
 
 ```
 cat ~/.ssh/id_ed25519.pub
@@ -66,11 +66,11 @@ ssh-ed25519 AAAA5AA7OZOZ7NRB1acK54bB47h58N6AIEX4zDziR1r0nM41d3NCG0fgCArjUD45pr13
 
 Next, open the SSH Keys page in your Alliance account: [https://ccdb.alliancecan.ca/ssh_authorized_keys](https://ccdb.alliancecan.ca/ssh_authorized_keys). Paste your key into the SSH Key field, give it a name (typically the host name of the computer where you generated it) and hit Add Key.
 
+**NOTE:** You may need to wait up to 30 minutes after adding your ssh key for it to work when trying to login via ssh. Have lunch and come back.
 
 ## SSH Access
 
-From a terminal, use the `ssh` command to log onto the cluster via [killarney.alliancecan.ca](killarney.alliancecan.ca):
-
+From a terminal, use the `ssh` command to log onto the cluster via **killarney.alliancecan.ca**:
 
 ```
 username@my-desktop:~$ ssh killarney_username@killarney.alliancecan.ca
@@ -106,12 +106,11 @@ The hostname **killarney.alliancecan.ca** load balances ssh connections across t
 
 # Killarney File System Intro
 
-
 ## Home directories
 
 When you first log onto the Killarney cluster, you will land in your home directory. This can be accessed at: `/home/username `or just` ~/`
 
-Home directories have 50 GB of storage space. To check the amount of free space in your home directory, use the` diskusage_report `command:
+Home directories have 50 GB of storage space. To check the amount of free space in your home directory, use the `diskusage_report` command:
 
 
 ```
@@ -123,39 +122,33 @@ username@klogin02:~$ diskusage_report
 
 ## Scratch space
 
-In addition to your home directory, you have a minimum of additional 250 GB scratch space (up to 2 TB, depending on your user level) available in the following location: `/scratch/$USER` or simply` $SCRATCH.`
+In addition to your home directory, you have a minimum of additional 250 GB scratch space (up to 2 TB, depending on your user level) available in the following location: `/scratch/$USER` or simply `$SCRATCH`.
 
 **⚠️ Unlike your home directory, this scratch space is temporary. It will get automatically purged of files that have not been accessed in 60 days.**
 
 A detailed description of the scratch purging policy is available on the Alliance Canada website: [https://docs.alliancecan.ca/wiki/Scratch_purging_policy](https://docs.alliancecan.ca/wiki/Scratch_purging_policy)
 
+Your scratch space directory will not exist when you initially log in. To have it set up send a request to [ops-help@vectorinstitute.ai](mailto:ops-help@vectorinstitute.ai). Include the name of your PI in the email.
 
 ## Shared projects
 
-For collaborative projects where many people need access to the same files, you need a shared project space. These are generally stored at `/project`
+For collaborative projects where many people need access to the same files, you need a shared project space. These are stored at `/project`.
 
 To set up a shared project space, send a request to [ops-help@vectorinstitute.ai](mailto:ops-help@vectorinstitute.ai). Describe what the project is about, which users need access, how much disk space you need, also an end date when it can be removed.
 
-
 ## Shared datasets
 
-To reduce the storage footprint for each user, we've made various commonly-used datasets like MIMIC and IMAGENET available for everyone to use. These are generally stored at /datasets
+To reduce the storage footprint for each user, we've made various commonly-used datasets like MIMIC and IMAGENET available for everyone to use. These are stored at `/datasets`
 
-Instead of copying these datasets on your home directory, you can create a symlink via
-
+Instead of copying these datasets on your home directory, you can create a symlink via:
 
 ```
-ln -s /dataset/PATH_TO_DATASET ~/PATH_OF_LINK # path of link can be some place in your home directory so that PyTorch/TF can pick up the dataset to these already downloaded directories.
+ln -s /datasets/PATH_TO_DATASET ~/PATH_OF_LINK # path of link can be some place in your home directory so that PyTorch/TF can pick up the dataset to these already downloaded directories.
 ```
-
-
-For a list of available datasets please see [Current Datasets](https://support.vectorinstitute.ai/CurrentDatasets)
-
 
 ## Shared model weights
 
-Similar to datasets, model weights are typically very large and can be shared among many users. We've made various common model weights such as Llama3, Mixtral and Stable Diffusion available at /`model-weights`
-
+Similar to datasets, model weights are typically very large and can be shared among many users. We've made various common model weights such as Llama3, Mixtral and Stable Diffusion available at `/model-weights`
 
 ## Training checkpoints
 
@@ -163,6 +156,8 @@ Unlike the legacy Bon Echo (Vaughan) cluster, there is no dedicated checkpoint s
 
 
 # Migration from legacy Vaughan (Bon Echo) Cluster
+
+**NOTE:** The approach for migrating detailed here requires that you set up a second ssh key on killarney. Your public ssh key on the vaughan cluster will be different than the one on your local machine.
 
 The easiest way to migrate data from the legacy Vaughan (Bon Echo) Cluster to Killarney is by using a file transfer command (likely `rsync` or `scp`) from an SSH session.
 
@@ -228,13 +223,11 @@ Since the cluster has many users and limited resources, we use the Slurm job sch
 
 The Alliance documentation provides lots of general information about submitting jobs using the Slurm job scheduler: [https://docs.alliancecan.ca/wiki/Running_jobs](https://docs.alliancecan.ca/wiki/Running_jobs)
 
-For some example Slurm workloads specific to the Killarney cluster (sbatch files, resource configurations, software environments, etc.) see the (../slurm-examples)[slurm-examples] provided in this repo.
+For some example Slurm workloads specific to the Killarney cluster (sbatch files, resource configurations, software environments, etc.) see the [Slurm examples](../slurm-examples) provided in this repo.
 
+## View jobs in a Slurm cluster (squeue)
 
-## View jobs in the Slurm cluster (squeue)
-
-To view all the jobs currently in the cluster, either running, pending or failed, use **squeue**: ([https://slurm.schedmd.com/squeue.html](https://slurm.schedmd.com/squeue.html))
-
+To view all the jobs currently in a cluster, either running, pending or failed, use `squeue`: ([https://slurm.schedmd.com/squeue.html](https://slurm.schedmd.com/squeue.html))
 
 ```
 username@klogin01:~$ squeue
@@ -263,15 +256,13 @@ username@login01:~$ $ squeue --me
 
 Refer to the ([squeue manual page](https://slurm.schedmd.com/squeue.html)) for a full list of options.
 
-
 ## Submit a new Slurm job (sbatch)
 
-To ask Slurm to run your jobs in the background so you can have your job running, even after logging off, use sbatch https://slurm.schedmd.com/sbatch.html
+To ask Slurm to run your jobs in the background so you can have your job running, even after logging off, use `sbatch`: https://slurm.schedmd.com/sbatch.html
 
-To use sbatch, you need to create a file, specify the configurations within (you can also specify these on the command line) and then run `sbatch my_sbatch_slurm.sh` to get Slurm to schedule it.
+To use sbatch, you need to create a file, specify the configurations within (you can also specify these on the command line) and then run `sbatch my_sbatch_slurm.sh` to get Slurm to schedule it. **Note**: You cannot submit jobs from your home directory. You need to submit them from a scratch or project folder.
 
 Example Hello World sbatch file (hello_world.sh):
-
 
 ```
 #!/bin/bash
@@ -302,7 +293,6 @@ Since Slurm runs your job in the background, it becomes really difficult to see 
 
 Note that the %j in output and error configuration tells Slurm to substitute the job ID where the %j is. So if your job ID is 1234 then your output file will be `hello_world.1234.out` and your error file will be `hello_world.1234.err`.
 
-
 ## Interactive sessions (srun)
 
 If all you want is an interactive session on a GPU node (without the batch job), just use `srun` (https://slurm.schedmd.com/srun.html)
@@ -324,8 +314,7 @@ srun: job 501831 has been allocated resources
 username@kn138:/project
 ```
 
-After you see $USER@kn###, you can run your script interactively.
-
+After you see $USER@kn###, you can use this shell session interactively.
 
 ## SSH to sbatch job
 
@@ -347,7 +336,6 @@ username@klogin01:~/scratch/imagenet$ srun --pty --overlap --jobid 937373 -w kn0
 username@kn060:~/scratch/imagenet$
 ```
 
-
 ## Accessing specific GPUs
 
 The Killarney cluster has both NVIDIA L40S and H100 GPUs available. To request a specific GPU type, use the `--gres=gpu` flag, for example:
@@ -367,11 +355,11 @@ srun: job 581667 has been allocated resources
 username@kn178:/scratch$
 ```
 
+Be careful about choosing the correct number of GPUs and correct time limit. The Slurm scheduler will "bill" you for resources used, so a resource-heavy job will reduce your future priority.
 
 ## View cluster resource utilization (sinfo)
 
 To see the availability in a more granular scale use sinfo ([https://slurm.schedmd.com/sinfo.html](https://slurm.schedmd.com/sinfo.html)). For example:
-
 
 ```
 sinfo -N --Format=Partition,CPUsState,GresUsed,Gres
@@ -400,8 +388,12 @@ gpubase_l40s_b3     32/32/0/64          gpu:l40s:4(IDX:0-3) gpu:l40s:4
 [...]
 ```
 
+For CPU's, A/I/OT stands for **A**llocated, **I**dle, **O**ther (eg. down) and **T**otal. Even if the GPU's on a node are available, if there are no Idle CPU's on the node then you won't be able to use it.
+
+
 # Software Environments
 
+## Pre-installed Environments
 The cluster comes with preinstalled software environments called **modules**. These will allow you to access many different versions of Python, VS Code Server, RStudio Server, NodeJS and many others. 
 
 To see the available preinstalled environments, run:
@@ -416,7 +408,8 @@ To use an environment, use `module load`. For example, if you need to use Python
 module load python/3.10.12
 ```
 
-If there isn't a preinstalled environment for your needs, you can use Poetry or python-venv. Here is a quick example of how to use python venv.
+## Custom Environments
+If there isn't a preinstalled environment for your needs, you can use [uv](https://docs.astral.sh/uv/), or python-venv. For ongoing projects it is highly recommended to use uv to manage dependencies. To just run something quickly one time, python-venv might be easier. Here is a quick example of how to use python venv.
 
 In the login node run the following:
 
@@ -470,26 +463,13 @@ gpubase_l40s_b5    up 7-00:00:00        17/0/0/17 kn[085-101]
 
 ## Automatic Restarts
 
-All jobs in our Slurm cluster have a time limit, after which they will get stopped. For longer running jobs which need more than a few hours, the [Vaughan Slurm Changes](https://support.vectorinstitute.ai/Computing?action=AttachFile&do=view&target=Vector+Vaughan+HPC+Changes+FAQ+2023.pdf) document describes how to automatically restart these.
+When a job exceeds its time limit, it will get stopped by the Slurm scheduler. For longer running jobs which need more than a few hours, see our [Timeout Requeue](../slurm-examples/timeout-requeue/) example which shows how to automatically requeue your job.
 
 ## Checkpoints
 
 In order to avoid losing your work when your job exits, you will need to implement checkpoints - periodic snapshots of your work that you load from so you can stop and resume without much lost work.
 
-On the legacy Bon Echo cluster, there was a dedicated checkpoint space in the file system for checkpoints. **⚠️ In Killarney, there is no dedicated checkpoint space.** Users are expected to manage their own checkpoints under their `$SCRATCH` folder.
-
-
-# Useful Links and Resources
-
-Computing parent page: https://support.vectorinstitute.ai/Computing
-
-Vaughan valid partition/qos: https://support.vectorinstitute.ai/Vaughan_slurm_changes
-
-Checkpointing: https://support.vectorinstitute.ai/CheckpointExample
-
-Slurm Scheduler: https://support.vectorinstitute.ai/slurm_fairshare
-
-FAQ: https://support.vectorinstitute.ai/FAQ%20about%20the%20cluster
+On the legacy Bon Echo cluster, there was a dedicated checkpoint space in the file system for checkpoints. **⚠️ In Killarney, there is no dedicated checkpoint space.** Users are expected to manage their own checkpoints under their `$SCRATCH` folder. Recall that your scratch folder is not permanent, and so you'll want to move any important checkpoints to you're home or project folder.
 
 
 # Support

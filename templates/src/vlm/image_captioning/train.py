@@ -2,13 +2,16 @@
 
 import os
 import random
+import logging
 
 import submitit
 import torch
 from datasets import load_dataset
 from torch.utils.data import DataLoader
 from transformers import BlipForConditionalGeneration, BlipProcessor
+from omegaconf import DictConfig, OmegaConf
 
+logger = logging.getLogger(__name__)
 
 class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
     """Trainer for VLM image captioning."""
@@ -33,14 +36,14 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
 
     def _setup_data(self, processor, cfg):
         """Set up dataset and dataloaders."""
-        dataset_name = getattr(cfg, "dataset_name", "cifar10")
-        batch_size = getattr(cfg, "batch_size", 16)
+        dataset_name = OmegaConf.select(cfg, "trainer.dataset_name", default="cifar10")
+        batch_size = OmegaConf.select(cfg, "trainer.batch_size", default=16)
 
-        print(f"Loading dataset: {dataset_name}")
+        logger.info(f"Loading dataset: {dataset_name}")
 
         if dataset_name == "cifar10":
             ds = load_dataset("cifar10")
-            print(f"Dataset splits: {list(ds.keys())}")
+            logger.info(f"Dataset splits: {list(ds.keys())}")
 
             cifar_classes = [
                 "airplane",
@@ -69,13 +72,13 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
 
         else:
             ds = load_dataset(dataset_name)
-            print(f"Dataset splits: {list(ds.keys())}")
+            logger.info(f"Dataset splits: {list(ds.keys())}")
 
             train_split = ds.get("train") or ds[list(ds.keys())[0]]
             eval_split = ds.get("validation") or ds.get("test")
 
-            print(f"Train split columns: {train_split.column_names}")
-            print(f"Sample train item: {train_split[0]}")
+            logger.info(f"Train split columns: {train_split.column_names}")
+            logger.info(f"Sample train item: {train_split[0]}")
 
             image_col = None
             text_col = None
@@ -94,7 +97,7 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
                     f"Could not find image and text columns. Available columns: {train_split.column_names}"
                 )
 
-        print(f"Using columns: image='{image_col}', text='{text_col}'")
+        logger.info(f"Using columns: image='{image_col}', text='{text_col}'")
 
         def collate(batch):
             images = [b[image_col] for b in batch]
@@ -138,7 +141,7 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
         model.train()
         running_loss = 0.0
         seen = 0
-        print_every = getattr(cfg, "print_every", 100)
+        print_every = OmegaConf.select(cfg, "trainer.print_every", default=100)
 
         for batch in train_loader:
             batch_device = {
@@ -162,7 +165,7 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
 
             if print_every > 0 and (global_step % print_every == 0):
                 avg_loss = running_loss / max(seen, 1)
-                print(f"Epoch {epoch} Step {global_step}: loss={avg_loss:.4f}")
+                logger.info(f"Epoch {epoch} Step {global_step}: loss={avg_loss:.4f}")
                 running_loss = 0.0
                 seen = 0
 
@@ -194,29 +197,35 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
 
         if total > 0:
             avg_loss = loss_sum / total
-            print(f"Epoch {epoch} eval: loss={avg_loss:.4f}")
+            logger.info(f"Epoch {epoch} eval: loss={avg_loss:.4f}")
 
     def _save_checkpoint(self, model, processor, epoch, out_dir):
         """Save model and processor checkpoint."""
         save_dir = os.path.join(out_dir, f"checkpoint-epoch-{epoch}")
+        logger.info(f"Saving checkpoint-epoch-{epoch}")
         os.makedirs(save_dir, exist_ok=True)
         model.save_pretrained(save_dir)
         processor.save_pretrained(save_dir)
 
     def __call__(self, cfg):
         """Train the VLM model."""
-        out_dir = os.path.join(cfg.work_dir, "outputs")
+        cfg : DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
+
+        # Create output directory
+        out_dir = cfg.paths.out_dir
         os.makedirs(out_dir, exist_ok=True)
+
+        # Get ckpt dir
         self.ckpt_dir = self._latest_checkpoint(out_dir)
 
         # Configuration
-        model_name = getattr(cfg, "model_name", "Salesforce/blip-image-captioning-base")
-        num_epochs = getattr(cfg, "num_epochs", 2)
-        lr = getattr(cfg, "learning_rate", 1e-5)
-        seed = getattr(cfg, "seed", 42)
+        model_name = OmegaConf.select(cfg, "trainer.model_name", default="Salesforce/blip-image-captioning-base")
+        lr = OmegaConf.select(cfg, "trainer.learning_rate", default=1e-5)
+        num_epochs = OmegaConf.select(cfg, "trainer.num_epochs", default=2)
+        seed = OmegaConf.select(cfg, "trainer.seed", default=42)
 
         # Set seed
-        print(f"Starting VLM captioning training with seed {seed}")
+        logger.info(f"Starting VLM captioning training with seed {seed}")
         random.seed(seed)
         torch.manual_seed(seed)
 
@@ -232,7 +241,7 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
         # Resume from checkpoint if available
         start_epoch = 0
         if self.ckpt_dir and os.path.exists(self.ckpt_dir):
-            print(f"Resuming from checkpoint: {self.ckpt_dir}")
+            logger.info(f"Resuming from checkpoint: {self.ckpt_dir}")
             model = BlipForConditionalGeneration.from_pretrained(self.ckpt_dir).to(
                 device
             )
@@ -248,7 +257,7 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
             self._evaluate_epoch(model, eval_loader, epoch, device)
             self._save_checkpoint(model, processor, epoch, out_dir)
 
-        print("Training completed!")
+        logger.info("Training completed!")
         return 0
 
     def checkpoint(self, *args, **kwargs):

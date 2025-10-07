@@ -1,8 +1,13 @@
 """Simple single-GPU MLP training (no checkpointing)."""
 
+import logging
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader, TensorDataset
+from omegaconf import DictConfig, OmegaConf
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_dummy_data(
@@ -23,19 +28,22 @@ class SimpleMLPTrainer:
 
     def __call__(self, cfg):
         """Train the MLP model."""
-        input_dim = getattr(cfg, "input_dim", 10)
-        hidden_dim = getattr(cfg, "hidden_dim", 64)
-        num_classes = getattr(cfg, "num_classes", 3)
-        batch_size = getattr(cfg, "batch_size", 32)
-        lr = getattr(cfg, "learning_rate", 1e-3)
-        num_epochs = getattr(cfg, "num_epochs", 100)
-        seed = getattr(cfg, "seed", 42)
+        cfg : DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
 
-        print(f"Starting simple MLP training with seed {seed}")
+        # Get trainer config variables
+        input_dim = OmegaConf.select(cfg, "trainer.input_dim", default=10)
+        hidden_dim = OmegaConf.select(cfg, "trainer.hidden_dim", default=64)
+        num_classes = OmegaConf.select(cfg, "trainer.num_classes", default=3)
+        batch_size = OmegaConf.select(cfg, "trainer.batch_size", default=32)
+        lr = OmegaConf.select(cfg, "trainer.learning_rate", default=1e-3)
+        num_epochs = OmegaConf.select(cfg, "trainer.num_epochs", default=1000)
+        seed = OmegaConf.select(cfg, "trainer.seed", default=42)
+
+        logger.info(f"Starting simple MLP training with seed {seed}")
         torch.manual_seed(seed)
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {device}")
+        logger.info(f"Using device: {device}")
 
         model = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
@@ -51,7 +59,7 @@ class SimpleMLPTrainer:
         optimizer = optim.Adam(model.parameters(), lr=lr)
         criterion = nn.CrossEntropyLoss()
 
-        print(f"Training for {num_epochs} epochs...")
+        logger.info(f"Training for {num_epochs} epochs...")
 
         for epoch in range(num_epochs):
             model.train()
@@ -73,7 +81,7 @@ class SimpleMLPTrainer:
 
             acc = 100.0 * correct / total
             avg_loss = loss_sum / len(loader)
-            print(f"Epoch {epoch}: loss={avg_loss:.4f} acc={acc:.2f}%")
+            logger.info(f"Epoch {epoch}: loss={avg_loss:.4f} acc={acc:.2f}%")
 
-        print("Training completed!")
+        logger.info("Training completed!")
         return 0

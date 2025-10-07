@@ -1,8 +1,20 @@
+defaults:
+  - _global  # Import global config settings
+  - _self_  # Must include the settings from this file
+
+# Local Trainer Defaults
 trainer:
   input_dim: 10
   hidden_dim: 64
   num_classes: 3
   batch_size: 32
   learning_rate: 1e-3
-  num_epochs: 100  # Smaller number since no checkpointing
+  num_epochs: 100 # Smaller number since no checkpointing
   seed: 42
+
+hydra:
+  job:
+    name: hydra_mlp
+  searchpath:
+    - pkg://configs  # Include configs from the configs package in the searchpath
+
