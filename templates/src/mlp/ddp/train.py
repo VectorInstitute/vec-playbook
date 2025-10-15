@@ -98,16 +98,22 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         return job_env, job_env.global_rank, job_env.local_rank, job_env.num_tasks
 
     def _prepare_environment(self, job_env, rank, local_rank, world_size):
+        print(
+            f"Preparing environment for rank {rank}, local_rank {local_rank}, world_size {world_size}"
+        )
         os.environ.setdefault("RANK", str(rank))
         os.environ.setdefault("LOCAL_RANK", str(local_rank))
         os.environ.setdefault("WORLD_SIZE", str(world_size))
 
         if "MASTER_ADDR" not in os.environ:
-            hostnames = getattr(job_env, "hostnames", None) or [job_env.hostname]
-            os.environ["MASTER_ADDR"] = str(hostnames[0])
+            master_addr = (
+                job_env.hostnames[0]
+                if hasattr(job_env, "hostnames")
+                else job_env.hostname
+            )
+            os.environ["MASTER_ADDR"] = str(master_addr)
 
-        if "MASTER_PORT" not in os.environ:
-            os.environ["MASTER_PORT"] = "29500"
+        os.environ.setdefault("MASTER_PORT", "29500")
 
     def _log_run_configuration(self, seed, world_size, local_rank, rank):
         if rank != 0:
@@ -200,7 +206,6 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         device,
         epoch,
         world_size,
-        rank,
     ):
         """Train for one epoch and return metrics."""
         # Set epoch for DistributedSampler to ensure proper shuffling across epochs
@@ -275,10 +280,9 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
                 device,
                 epoch,
                 world_size,
-                rank,
             )
 
-            avg_loss = loss_sum / len(loader)
+            avg_loss = loss_sum / (len(loader) * world_size)
             acc = 100.0 * correct / total
             should_checkpoint = epoch % 100 == 0 or epoch == num_epochs - 1
 
