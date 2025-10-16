@@ -98,9 +98,6 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         return job_env, job_env.global_rank, job_env.local_rank, job_env.num_tasks
 
     def _prepare_environment(self, job_env, rank, local_rank, world_size):
-        print(
-            f"Preparing environment for rank {rank}, local_rank {local_rank}, world_size {world_size}"
-        )
         os.environ.setdefault("RANK", str(rank))
         os.environ.setdefault("LOCAL_RANK", str(local_rank))
         os.environ.setdefault("WORLD_SIZE", str(world_size))
@@ -158,7 +155,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         num_classes = OmegaConf.select(cfg, "trainer.num_classes", default=3)
         batch_size = OmegaConf.select(cfg, "trainer.batch_size", default=32)
 
-        dataset = create_dummy_data(1000, input_dim, num_classes)
+        dataset = create_dummy_data(100000, input_dim, num_classes)
         sampler = (
             DistributedSampler(
                 dataset, num_replicas=world_size, rank=rank, shuffle=True
