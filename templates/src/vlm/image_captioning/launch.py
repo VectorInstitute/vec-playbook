@@ -1,30 +1,35 @@
 """Launch script to run VLM image captioning with Hydra + Submitit."""
 
 import os
+import logging
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from .train import ImageCaptioningTrainer
 
-
-_CONFIG_PATH = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "../../../configs")
-)
+logger = logging.getLogger(__name__)
 
 
-@hydra.main(config_path=_CONFIG_PATH, config_name="_global", version_base=None)
+@hydra.main(config_path=".", config_name="config", version_base=None)
 def main(cfg: DictConfig):
-    """Hydra entrypoint that merges local config and runs the Trainer."""
-    local_cfg = OmegaConf.load(os.path.join(os.path.dirname(__file__), "config.yaml"))
+    """Hydra entrypoint that updates config with out_dir, saves resolved hydra config and runs the Trainer."""
+    # Turn of struct mode so that we can modify DictConfig
     OmegaConf.set_struct(cfg, False)
-    cfg = OmegaConf.merge(cfg, local_cfg)
 
-    if "trainer" in cfg:
-        trainer_cfg = cfg.trainer
-        cfg = OmegaConf.merge(cfg, trainer_cfg)
-        del cfg.trainer
+    # Add output_directory for current run
+    hydra_config = hydra.core.hydra_config.HydraConfig.get()
+    cfg.paths.out_dir = str(os.path.join(hydra_config.runtime.output_dir, "outputs"))
+    logger.info(f"Setting paths.out_dir to: {cfg.paths.out_dir}")
 
+    # Save a resolved version of the hydra config
+    save_path = os.path.join(hydra_config.runtime.output_dir, hydra_config.output_subdir, "hydra_resolved.yaml")
+    logger.info(f"Resolving hydra config for this run and saving to: {save_path}")
+    OmegaConf.set_readonly(hydra_config, False)
+    OmegaConf.resolve(hydra_config)
+    OmegaConf.save(hydra_config, save_path)
+
+    # Run Trainer
     image_captioning_trainer = ImageCaptioningTrainer()
     return image_captioning_trainer(cfg)
 

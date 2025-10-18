@@ -1,6 +1,7 @@
 """Fine-tune a HF model for text classification with a basic loop."""
 
 import os
+import logging
 
 import submitit
 from datasets import load_dataset
@@ -12,6 +13,9 @@ from transformers import (
     TrainingArguments,
 )
 
+from omegaconf import DictConfig, OmegaConf
+
+logger = logging.getLogger(__name__)
 
 class TextClassificationTrainer(submitit.helpers.Checkpointable):
     """Trainer for text classification."""
@@ -29,40 +33,46 @@ class TextClassificationTrainer(submitit.helpers.Checkpointable):
 
     def __call__(self, cfg):
         """Train the model."""
-        out_dir = os.path.join(cfg.work_dir, "outputs")
+        cfg : DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
+
+        # Create output directory
+        out_dir = cfg.paths.out_dir
         os.makedirs(out_dir, exist_ok=True)
+
         self.ckpt_dir = self._latest_checkpoint(out_dir)
 
-        model_name = getattr(cfg, "model_name", "distilbert-base-uncased")
+        model_name = OmegaConf.select(cfg, "trainer.model_name", default="distilbert-base-uncased")
         ds = load_dataset("ag_news")
         tok = AutoTokenizer.from_pretrained(model_name, use_fast=True)
 
         def tok_fn(ex):
             return tok(
-                ex["text"], truncation=True, max_length=getattr(cfg, "max_length", 256)
+                ex["text"], truncation=True, max_length=OmegaConf.select(cfg, "trainer.max_length", default=256)
             )
 
         ds = ds.map(tok_fn, batched=True)
         collator = DataCollatorWithPadding(tokenizer=tok)
 
         model = AutoModelForSequenceClassification.from_pretrained(
-            model_name, num_labels=getattr(cfg, "num_labels", 4)
+            model_name, num_labels=OmegaConf.select(cfg, "trainer.num_labels", default=4)
         )
 
+        # Feel free to add any additional args you want to pass to the config.yaml and pass them here
+        # See the following link for a full description of all 119 possible args: https://huggingface.co/docs/transformers/v4.56.2/en/main_classes/trainer#transformers.TrainingArguments
         args = TrainingArguments(
             output_dir=out_dir,
             overwrite_output_dir=True,
-            num_train_epochs=getattr(cfg, "num_train_epochs", 2),
-            per_device_train_batch_size=getattr(cfg, "per_device_train_batch_size", 16),
-            per_device_eval_batch_size=getattr(cfg, "per_device_eval_batch_size", 32),
+            num_train_epochs=OmegaConf.select(cfg, "trainer.num_train_epochs", default=2),
+            per_device_train_batch_size=OmegaConf.select(cfg, "trainer.per_device_train_batch_size", default=16),
+            per_device_eval_batch_size=OmegaConf.select(cfg, "trainer.per_device_eval_batch_size", default=32),
             eval_strategy="steps",
-            eval_steps=getattr(cfg, "eval_steps", 200),
-            logging_steps=getattr(cfg, "logging_steps", 50),
-            learning_rate=getattr(cfg, "learning_rate", 5e-5),
-            weight_decay=getattr(cfg, "weight_decay", 0.01),
+            eval_steps=OmegaConf.select(cfg, "trainer.eval_steps", default=200),
+            logging_steps=OmegaConf.select(cfg, "trainer.logging_steps", default=50),
+            learning_rate=OmegaConf.select(cfg, "trainer.learning_rate", default=5e-5),
+            weight_decay=OmegaConf.select(cfg, "trainer.weight_decay", default=0.01),
             save_strategy="steps",
-            save_steps=getattr(cfg, "save_steps", 100),
-            save_total_limit=getattr(cfg, "save_total_limit", 2),
+            save_steps=OmegaConf.select(cfg, "trainer.save_steps", default=100),
+            save_total_limit=OmegaConf.select(cfg, "trainer.save_total_limit", default=2),
             report_to=[],
         )
 
@@ -77,7 +87,7 @@ class TextClassificationTrainer(submitit.helpers.Checkpointable):
 
         trainer.train(resume_from_checkpoint=self.ckpt_dir)
         metrics = trainer.evaluate()
-        print(metrics)
+        logger.info(metrics)
         return 0
 
     def checkpoint(self, *args, **kwargs):

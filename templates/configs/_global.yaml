@@ -1,6 +1,6 @@
 defaults:
   - user
-  - compute: bon_echo/a40_1x
+  - compute: killarney/l40s_1x
   - requeue: "off"
   - _self_
   - override hydra/launcher: submitit_slurm
@@ -8,21 +8,27 @@ defaults:
 experiment_name: ${now:%Y%m%d}-${now:%H%M%S}
 
 paths:
-  work_root: ${oc.env:HOME}
-work_dir: ${paths.work_root}/vec_jobs/${experiment_name}
+  work_root: ${oc.select:compute.work_root, /scratch/${oc.env:USER}}
+  work_dir: ${paths.work_root}/vec_jobs/${experiment_name}
 
 hydra:
+  output_subdir: hydra_configs
   run:
-    dir: ${work_dir}
+    dir: ${paths.work_dir}
   sweep:
-    dir: ${work_dir}
+    dir: ${paths.work_dir}
   launcher:
-    timeout_min: ${compute.timeout_min}
-    gpus_per_node: ${compute.gpus_per_node}
+    submitit_folder: ${hydra.sweep.dir}/submitit_logs/%j
+    nodes: ${oc.select:compute.nodes,null}
+    gpus_per_node: ${oc.select:compute.slurm.gpus_per_node, ${compute.gpus_per_node}}
     tasks_per_node: 1
     cpus_per_task: ${compute.cpus_per_task}
     mem_gb: ${compute.mem_gb}
-    partition: ${compute.slurm.partition}       # <-- expects compute.slurm.partition
+    timeout_min: ${compute.timeout_min}
+    gres: ${oc.select:compute.gres,null}
+    partition: ${oc.select:compute.slurm.partition,null}
+    qos: ${oc.select:compute.slurm.qos,null}
     account: ${user.slurm.account}
     max_num_timeout: 2
-    additional_parameters: ${oc.select:user.slurm.additional_parameters,{}}
+    additional_parameters: ${oc.select:user.slurm.additional_parameters, {}}
+      

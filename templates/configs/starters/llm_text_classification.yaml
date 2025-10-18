@@ -1,4 +1,0 @@
-starter:
-  module: starters.llm.text_classification.runner
-  entry: Runner
-  config: starters/llm/text_classification/config.yaml

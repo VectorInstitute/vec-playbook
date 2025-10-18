@@ -3,8 +3,11 @@ requires = ["setuptools>=65", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["templates/src"]
+where = ["templates", "templates/src"]  # Include configs and templates as packages
 include = ["*"]
+
+[tool.setuptools.package-data]
+"configs" = ["**/*.yaml"]  # Make sure configs package includes the yaml configs
 
 [project]
 name = "vec-playbook"
