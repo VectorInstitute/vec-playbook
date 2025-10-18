@@ -80,6 +80,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
             )
 
     def _wrap_distributed(self, model, world_size, local_rank):
+        """Wrap the model with DDP if running in distributed mode."""
         if world_size > 1:
             return nn.parallel.DistributedDataParallel(
                 model,
@@ -88,16 +89,19 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         return model
 
     def _configure_training(self, cfg):
+        """Extract core training hyperparameters from the configuration."""
         lr = OmegaConf.select(cfg, "trainer.learning_rate", default=1e-3)
         num_epochs = OmegaConf.select(cfg, "trainer.num_epochs", default=1000)
         seed = OmegaConf.select(cfg, "trainer.seed", default=42)
         return lr, num_epochs, seed
 
     def _get_distributed_config(self):
+        """Retrieve distributed job configuration information from Submitit."""
         job_env = submitit.JobEnvironment()
         return job_env, job_env.global_rank, job_env.local_rank, job_env.num_tasks
 
     def _prepare_environment(self, job_env, rank, local_rank, world_size):
+        """Set up distributed environment variables for PyTorch."""
         os.environ.setdefault("RANK", str(rank))
         os.environ.setdefault("LOCAL_RANK", str(local_rank))
         os.environ.setdefault("WORLD_SIZE", str(world_size))
@@ -113,6 +117,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         os.environ.setdefault("MASTER_PORT", "29500")
 
     def _log_run_configuration(self, seed, world_size, local_rank, rank):
+        """Log the configuration of the current DDP run."""
         if rank != 0:
             return
         logger.info(f"Starting DDP MLP training with seed {seed}")
@@ -121,6 +126,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
             logger.info(f"Number of available GPUs: {torch.cuda.device_count()}")
 
     def _set_seed(self, seed):
+        """Set random seeds for reproducibility across PyTorch and CUDA."""
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed(seed)
@@ -254,6 +260,10 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         self._setup_distributed(rank, world_size)
 
         device, model = self._initialize_device_and_model(cfg, local_rank)
+        if rank == 0:
+            logger.info(f"[Rank {rank}] Initialized on device: {device}")
+        else:
+            print(f"[Rank {rank}] Initialized on device: {device}")
         if rank == 0:
             logger.info(f"Using device: {device}")
 
