@@ -1,14 +1,14 @@
 """Distributed MLP training using PyTorch DDP."""
 
-import os
 import logging
+import os
 
 import submitit
 import torch
 import torch.distributed as dist
+from omegaconf import DictConfig, OmegaConf
 from torch import nn, optim
 from torch.utils.data import DataLoader, DistributedSampler, TensorDataset
-from omegaconf import DictConfig, OmegaConf
 
 
 logger = logging.getLogger(__name__)
@@ -79,6 +79,58 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
                 world_size=world_size,
             )
 
+    def _wrap_distributed(self, model, world_size, local_rank):
+        """Wrap the model with DDP if running in distributed mode."""
+        if world_size > 1:
+            return nn.parallel.DistributedDataParallel(
+                model,
+                device_ids=[local_rank] if torch.cuda.is_available() else None,
+            )
+        return model
+
+    def _configure_training(self, cfg):
+        """Extract core training hyperparameters from the configuration."""
+        lr = OmegaConf.select(cfg, "trainer.learning_rate", default=1e-3)
+        num_epochs = OmegaConf.select(cfg, "trainer.num_epochs", default=1000)
+        seed = OmegaConf.select(cfg, "trainer.seed", default=42)
+        return lr, num_epochs, seed
+
+    def _get_distributed_config(self):
+        """Retrieve distributed job configuration information from Submitit."""
+        job_env = submitit.JobEnvironment()
+        return job_env, job_env.global_rank, job_env.local_rank, job_env.num_tasks
+
+    def _prepare_environment(self, job_env, rank, local_rank, world_size):
+        """Set up distributed environment variables for PyTorch."""
+        os.environ.setdefault("RANK", str(rank))
+        os.environ.setdefault("LOCAL_RANK", str(local_rank))
+        os.environ.setdefault("WORLD_SIZE", str(world_size))
+
+        if "MASTER_ADDR" not in os.environ:
+            master_addr = (
+                job_env.hostnames[0]
+                if hasattr(job_env, "hostnames")
+                else job_env.hostname
+            )
+            os.environ["MASTER_ADDR"] = str(master_addr)
+
+        os.environ.setdefault("MASTER_PORT", "29500")
+
+    def _log_run_configuration(self, seed, world_size, local_rank, rank):
+        """Log the configuration of the current DDP run."""
+        if rank != 0:
+            return
+        logger.info(f"Starting DDP MLP training with seed {seed}")
+        logger.info(f"World size: {world_size}, Local rank: {local_rank}")
+        if torch.cuda.is_available():
+            logger.info(f"Number of available GPUs: {torch.cuda.device_count()}")
+
+    def _set_seed(self, seed):
+        """Set random seeds for reproducibility across PyTorch and CUDA."""
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+
     def _initialize_device_and_model(self, cfg, local_rank):
         """Initialize device and model."""
         input_dim = OmegaConf.select(cfg, "trainer.input_dim", default=10)
@@ -109,7 +161,7 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         num_classes = OmegaConf.select(cfg, "trainer.num_classes", default=3)
         batch_size = OmegaConf.select(cfg, "trainer.batch_size", default=32)
 
-        dataset = create_dummy_data(1000, input_dim, num_classes)
+        dataset = create_dummy_data(100000, input_dim, num_classes)
         sampler = (
             DistributedSampler(
                 dataset, num_replicas=world_size, rank=rank, shuffle=True
@@ -157,7 +209,6 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
         device,
         epoch,
         world_size,
-        rank,
     ):
         """Train for one epoch and return metrics."""
         # Set epoch for DistributedSampler to ensure proper shuffling across epochs
@@ -193,64 +244,39 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
 
     def __call__(self, cfg):
         """Train the MLP model with DDP."""
-        cfg : DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
+        cfg: DictConfig = OmegaConf.create(cfg)
 
-        # Create output directory
         out_dir = cfg.paths.out_dir
         os.makedirs(out_dir, exist_ok=True)
-
-        # Get ckpt dir
         self.ckpt_dir = self._latest_checkpoint(out_dir)
 
-        # Configuration
-        lr = OmegaConf.select(cfg, "trainer.learning_rate", default=1e-3)
-        num_epochs = OmegaConf.select(cfg, "trainer.num_epochs", default=1000)
-        seed = OmegaConf.select(cfg, "trainer.seed", default=42)
+        lr, num_epochs, seed = self._configure_training(cfg)
+        job_env, rank, local_rank, world_size = self._get_distributed_config()
 
-        # Get distributed training info from environment
-        # TODO: None of these env vars are actually set at the moment. Need to fix this example.
-        rank = int(os.environ.get("RANK", "0"))
-        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-        world_size = int(os.environ.get("WORLD_SIZE", "1"))
+        self._prepare_environment(job_env, rank, local_rank, world_size)
+        self._set_seed(seed)
+        self._log_run_configuration(seed, world_size, local_rank, rank)
 
-        if rank == 0:
-            logger.info(f"Starting DDP MLP training with seed {seed}")
-            logger.info(f"World size: {world_size}, Local rank: {local_rank}")
-
-        # Set seed for reproducibility (same seed on all processes)
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(seed)
-            logger.info(f"Number of available GPUs: {torch.cuda.device_count()}")
-
-        # Setup distributed training
         self._setup_distributed(rank, world_size)
 
-        # Setup device and model
         device, model = self._initialize_device_and_model(cfg, local_rank)
-
+        if rank == 0:
+            logger.info(f"[Rank {rank}] Initialized on device: {device}")
+        else:
+            print(f"[Rank {rank}] Initialized on device: {device}")
         if rank == 0:
             logger.info(f"Using device: {device}")
 
-        # Wrap model with DDP
-        if world_size > 1:
-            model = nn.parallel.DistributedDataParallel(
-                model,
-                device_ids=[local_rank] if torch.cuda.is_available() else None,
-            )
+        model = self._wrap_distributed(model, world_size, local_rank)
 
-        # Setup data and training
         loader, sampler = self._initialize_data_and_loader(cfg, world_size, rank)
         optimizer = optim.Adam(model.parameters(), lr=lr)
         criterion = nn.CrossEntropyLoss()
 
-        # Resume from checkpoint if available
         start_epoch = self._load_checkpoint_if_exists(model, optimizer, device, rank)
-
         if rank == 0:
             logger.info(f"Training from epoch {start_epoch} to {num_epochs}...")
 
-        # Training loop with DDP
         for epoch in range(start_epoch, num_epochs):
             loss_sum, correct, total = self._train_epoch(
                 model,
@@ -261,18 +287,20 @@ class DDPMLPTrainer(submitit.helpers.Checkpointable):
                 device,
                 epoch,
                 world_size,
-                rank,
             )
+
+            avg_loss = loss_sum / (len(loader) * world_size)
+            acc = 100.0 * correct / total
+            should_checkpoint = epoch % 100 == 0 or epoch == num_epochs - 1
 
             # Log metrics only on rank 0
             if rank == 0:
-                acc = 100.0 * correct / total
-                avg_loss = loss_sum / len(loader)
                 logger.info(f"Epoch {epoch}: loss={avg_loss:.4f} acc={acc:.2f}%")
 
-                if epoch % 100 == 0 or epoch == num_epochs - 1:
-                    if world_size > 1:
-                        dist.barrier()
+            if should_checkpoint:
+                if world_size > 1:
+                    dist.barrier()
+                if rank == 0:
                     self._save_checkpoint(
                         model, optimizer, epoch, out_dir, avg_loss, acc, rank
                     )
