@@ -26,7 +26,7 @@ cd path/to/vec-playbook
 uv sync  # Automatically installs dependencies in vec-playbook/.venv
 ```
 
-Finally, ensure you're working directory (by default your cluster scratch space) exists and that you have access to the resources you're requesting on the cluster. 
+Finally, ensure you're working directory (by default your cluster scratch space) exists and that you have access to the resources you're requesting on the cluster.
 
 ### UV Tip for Killarney
 
@@ -45,7 +45,7 @@ templates/
 ```
 
 Each template directory contains a `launch.py`, a `train.py`, and a `config.yaml`.
-The `configs/` directory defines Slurm presets and shared Hydra + Submitit settings. 
+The `configs/` directory defines Slurm presets and shared Hydra + Submitit settings.
 
 The launch script contains the `hydra.main` decorator which points hydra to the templates local `config.yaml`. This `config.yaml` imports the `_global` config from the `configs/` directory, which in turn imports other preset configs.
 
@@ -85,12 +85,12 @@ All launchers follow the same pattern: use `uv run python -m <templatee>.launch`
 uv run python -m <template_pkg>.launch \
   compute=<cluster>/<preset> \
   requeue=<on|off> \
-  <config.overridess> \
+  <config.overrides> \
   <new-keys> \
   --multirun
 ```
 
--  `<template_pkg>`: The module path to the template launch script (eg.  `mlp.single`)
+- `<template_pkg>`: The module path to the template launch script (eg.  `mlp.single`)
 - `compute=<cluster>/<preset>`: chooses the Slurm resources defined under `templates/configs/compute/` (or a custom preset you add).
 - `requeue=<on|off>`: toggles the Submitit requeue flag described in the checkpointing section.
 - Additional config overrides use `key=value` syntax; nested keys follow the YAML structure (e.g., `compute.mem_gb=32`).
@@ -233,7 +233,7 @@ vec_jobs/<timestamp>/
 │      └── hydra_resolved.yaml  # The hydra settings that were used for this run (with all placeholder values resolved)
 │
 ...
-└── <hydra-run-id>/ 
+└── <hydra-run-id>/
     ...
     └── ...
 ```
