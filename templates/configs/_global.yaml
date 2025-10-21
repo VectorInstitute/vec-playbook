@@ -19,16 +19,15 @@ hydra:
     dir: ${paths.work_dir}
   launcher:
     submitit_folder: ${hydra.sweep.dir}/submitit_logs/%j
-    nodes: ${oc.select:compute.nodes,null}
-    gpus_per_node: ${oc.select:compute.slurm.gpus_per_node, ${compute.gpus_per_node}}
-    tasks_per_node: 1
+    nodes: ${compute.nodes}
+    gpus_per_node: null
+    tasks_per_node: ${oc.select:compute.tasks_per_node, ${compute.gpus_per_node}}
     cpus_per_task: ${compute.cpus_per_task}
     mem_gb: ${compute.mem_gb}
     timeout_min: ${compute.timeout_min}
-    gres: ${oc.select:compute.gres,null}
+    gres: ${compute.gres}
     partition: ${oc.select:compute.slurm.partition,null}
     qos: ${oc.select:compute.slurm.qos,null}
     account: ${user.slurm.account}
     max_num_timeout: 2
-    additional_parameters: ${oc.select:user.slurm.additional_parameters, {}}
-      
+    additional_parameters: ${oc.select:compute.slurm.additional_parameters, ${oc.select:user.slurm.additional_parameters, {}}}

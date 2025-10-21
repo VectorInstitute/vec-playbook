@@ -1,35 +1,66 @@
+defaults:
+  - _global
+  - _self_
+
+hydra:
+  job:
+    name: llm_finetune_distributed
+  searchpath:
+    - pkg://configs
+  launcher:
+    tasks_per_node: ${compute.gpus_per_node}
+    setup:
+      - 'export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID'
+
+paths:
+  out_dir: null
+
 trainer:
+  seed: 42
   model:
-    name: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-    gradient_checkpointing: false
-
-  data:
-    name: "karpathy/tiny_shakespeare"
-    text_key: "text"
-    max_length: 512
+    name: "EleutherAI/pythia-6.9b"
+    revision: null
     trust_remote_code: true
-
+    torch_dtype: "float16"
+  data:
+    dataset_name: "wikitext"
+    dataset_config_name: "wikitext-2-raw-v1"
+    text_column: "text"
+    train_split: "train"
+    eval_split: "validation"
+    max_length: 512
+    load_kwargs:
+      streaming: false
   train:
     num_train_epochs: 1
     per_device_train_batch_size: 1
     per_device_eval_batch_size: 1
-    gradient_accumulation_steps: 8
-    learning_rate: 2.0e-5
-    weight_decay: 0.0
-    logging_steps: 20
+    gradient_accumulation_steps: 4
+    learning_rate: 1.5e-5
+    weight_decay: 0.01
+    warmup_steps: 200
+    logging_steps: 1
+    logging_first_step: true
     eval_steps: 200
     save_steps: 200
     eval_strategy: "steps"
-
+    save_strategy: "steps"
+    save_total_limit: 2
+    lr_scheduler_type: "cosine"
+    max_grad_norm: 1.0
+    optim: "adamw_torch"
   dist:
-    mode: "fsdp"                 # none | ddp | fsdp
-    backend: "nccl"
-    bf16: false
+    mode: "fsdp"
     fp16: true
-    fsdp: "full_shard auto_wrap"
+    bf16: false
+    fsdp: ["full_shard", "auto_wrap"]
     fsdp_config:
       use_orig_params: true
+      activation_checkpointing: false
       limit_all_gathers: true
       forward_prefetch: true
       sync_module_states: true
-      activation_checkpointing: false
+      fsdp_auto_wrap_policy: "SIZE_BASED_WRAP"
+      fsdp_min_num_params: 1000000
+  logging:
+    report_to: []
