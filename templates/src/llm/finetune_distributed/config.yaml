@@ -41,8 +41,8 @@ trainer:
     warmup_steps: 200
     logging_steps: 1
     logging_first_step: true
-    eval_steps: 200
-    save_steps: 200
+    eval_steps: 10
+    save_steps: 10
     eval_strategy: "steps"
     save_strategy: "steps"
     save_total_limit: 2
