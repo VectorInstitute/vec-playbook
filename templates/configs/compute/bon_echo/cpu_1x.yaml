@@ -1,11 +1,10 @@
 cluster: bon_echo
 nodes: 1
 gpus_per_node: 0
+gres: null
 cpus_per_task: 2
 mem_gb: 8
 work_root: /scratch/ssd004/scratch/${oc.env:USER}
-time_limit: "0:15:00"
-timeout_min: 15
-gres: null
+timeout_min: 60
 slurm:
-  gpus_per_node: null
+  additional_parameters: {}

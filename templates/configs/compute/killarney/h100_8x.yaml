@@ -2,11 +2,11 @@ cluster: killarney
 nodes: 1
 gpu_type: h100
 gpus_per_node: 8
-time_limit: "1:00:00"
-timeout_min: 60
-work_root: /scratch/${oc.env:USER}
-mem_gb: 2048
-cpus_per_task: 96
 gres: gpu:${.gpu_type}:${.gpus_per_node}
+tasks_per_node: ${.gpus_per_node}
+cpus_per_task: 6
+mem_gb: 1920
+work_root: /scratch/${oc.env:USER}
+timeout_min: 60
 slurm:
-  gpus_per_node: null
+  additional_parameters: {}
