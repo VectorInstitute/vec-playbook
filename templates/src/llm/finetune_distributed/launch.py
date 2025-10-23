@@ -34,6 +34,7 @@ def main(cfg: DictConfig):
     OmegaConf.resolve(hydra_config)
     OmegaConf.save(hydra_config, save_path)
 
+    # Run the trainer with the run config
     trainer = FinetuneDistributedTrainer()
     return trainer(cfg)
 

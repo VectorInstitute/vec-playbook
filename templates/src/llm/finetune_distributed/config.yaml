@@ -2,19 +2,6 @@ defaults:
   - _global
   - _self_
 
-hydra:
-  job:
-    name: llm_finetune_distributed
-  searchpath:
-    - pkg://configs
-  launcher:
-    tasks_per_node: ${compute.gpus_per_node}
-    setup:
-      - 'export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID'
-
-paths:
-  out_dir: null
-
 trainer:
   seed: 42
   model:
@@ -64,3 +51,12 @@ trainer:
       fsdp_min_num_params: 1000000
   logging:
     report_to: []
+
+hydra:
+  job:
+    name: llm_finetune_distributed
+  searchpath:
+    - pkg://configs  # Include configs from the configs package in the searchpath
+  launcher:
+    setup:
+      - 'export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID'
