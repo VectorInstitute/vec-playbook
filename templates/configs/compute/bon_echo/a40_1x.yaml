@@ -2,12 +2,12 @@ cluster: bon_echo
 nodes: 1
 gpu_type: a40
 gpus_per_node: 1
-time_limit: "8:00:00"
-timeout_min: 480
-work_root: /scratch/ssd004/scratch/${oc.env:USER}
-mem_gb: 16
-cpus_per_task: 16
 gres: gpu:${.gpu_type}:${.gpus_per_node}
+tasks_per_node: ${.gpus_per_node}
+cpus_per_task: 8
+mem_gb: 40
+work_root: /scratch/ssd004/scratch/${oc.env:USER}
+timeout_min: 60
 slurm:
   partition: a40
-  gpus_per_node: null
+  additional_parameters: {}

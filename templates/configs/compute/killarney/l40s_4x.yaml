@@ -2,13 +2,11 @@ cluster: killarney
 nodes: 1
 gpu_type: l40s
 gpus_per_node: 4
+gres: gpu:${.gpu_type}:${.gpus_per_node}
+tasks_per_node: ${.gpus_per_node}
 cpus_per_task: 16
-mem_gb: 256
-time_limit: "1:00:00"
-timeout_min: 60
+mem_gb: 480
 work_root: /scratch/${oc.env:USER}
-gres: "gpu:${.gpu_type}:${.gpus_per_node}"
+timeout_min: 60
 slurm:
-  partition: null
-  qos: null
   additional_parameters: {}
