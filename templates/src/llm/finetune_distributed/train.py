@@ -69,11 +69,18 @@ class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
 
         if torch.cuda.is_available():
             visible = torch.cuda.device_count()
+
+            # Determine local rank from environment
             local_rank_str = (
                 os.environ.get("LOCAL_RANK") or os.environ.get("SLURM_LOCALID") or "0"
             )
             local_rank = int(local_rank_str)
+
+            # If only 1 GPU visible (via CUDA_VISIBLE_DEVICES), use device 0;
+            # otherwise distribute tasks across visible GPUs using local_rank
             torch.cuda.set_device(0 if visible == 1 else (local_rank % max(1, visible)))
+
+            # Log distributed training context for debugging
             logger.info(
                 "Distributed context: rank=%s/%s local_rank=%s pid=%s cuda_visible=%s current_device=%s",
                 os.environ.get("RANK", "?"),
@@ -217,6 +224,7 @@ class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
         self.ckpt_dir = self._latest_checkpoint(out_dir)
 
         self._setup_distributed_environment()
+
         set_seed(int(cfg.trainer.seed))
 
         model_cfg = OmegaConf.to_container(cfg.trainer.model, resolve=True) or {}
