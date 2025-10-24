@@ -5,7 +5,7 @@ defaults:
 trainer:
   seed: 42
   model:
-    name: "EleutherAI/pythia-6.9b"
+    name: "EleutherAI/pythia-1b"
     revision: null
     trust_remote_code: true
     torch_dtype: "float16"
@@ -20,8 +20,8 @@ trainer:
       streaming: false
   train:
     num_train_epochs: 1
-    per_device_train_batch_size: 1
-    per_device_eval_batch_size: 1
+    per_device_train_batch_size: 8
+    per_device_eval_batch_size: 8
     gradient_accumulation_steps: 4
     learning_rate: 1.5e-5
     weight_decay: 0.01
@@ -60,3 +60,9 @@ hydra:
   launcher:
     setup:
       - 'export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID'
+      - 'export TRANSFORMERS_VERBOSITY=error'
+      - 'export NCCL_DEBUG=WARN'
+      - 'export TORCH_NCCL_BLOCKING_WAIT=1'
+      - 'export TORCH_NCCL_ASYNC_ERROR_HANDLING=1'
+    additional_parameters:
+      kill_on_bad_exit: 1
