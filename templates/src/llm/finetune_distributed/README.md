@@ -71,19 +71,19 @@ Where:
 **Pythia-1B on 2× NVIDIA L40 GPUs with batch=16, seq=512:**
 
 ```text
-Params: 1.0B × 2 bytes = 2.00 GB total
+Params: 1.0B × 2 bytes = 2.00 GiB total
 
 Model + Gradients + Optimizer States (with master weights):
-   (1.0B × 2 bytes × 8) / 2 GPUs ≈ 7.45 GB per GPU
+   (1.0B × 2 bytes × 8) / 2 GPUs ≈ 7.45 GiB per GPU
 
 Activations (not sharded):
-   ≈ 1.0 GB per GPU (depends on hidden_dim × layers)
+   ≈ 1.0 GiB per GPU (depends on hidden_dim × layers)
 
 Total steady-state:
-   ≈ 8.45 GB per GPU
+   ≈ 8.45 GiB per GPU
 
 Transient all-gather overhead:
-   +10–20% (≈ 9.3 – 10.2 GB peak)
+   +10–20% (≈ 9.3 – 10.2 GiB peak)
 ```
 
 ---
