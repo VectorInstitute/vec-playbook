@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import warnings
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -17,12 +18,29 @@ from transformers import (
     AutoTokenizer,
     DataCollatorForLanguageModeling,
     Trainer,
+    TrainerCallback,
     TrainingArguments,
     set_seed,
 )
+from transformers.utils import logging as hf_logging
 
 
 logger = logging.getLogger(__name__)
+
+
+class RankZeroLoggingCallback(TrainerCallback):
+    """Log training progress to Hydra logs on rank 0 only."""
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        """Forward trainer logs to Python logger on rank 0."""
+        if state.is_world_process_zero and logs:
+            filtered = {
+                k: v
+                for k, v in logs.items()
+                if k in ["loss", "learning_rate", "epoch", "grad_norm", "eval_loss"]
+            }
+            if filtered:
+                logger.info(f"Step {state.global_step}: {filtered}")
 
 
 class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
@@ -52,50 +70,62 @@ class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
             "fp16": torch.float16,
             "bfloat16": torch.bfloat16,
             "bf16": torch.bfloat16,
-            "tf32": torch.float32,
         }
         if dtype not in dtype_map:
             raise ValueError(f"Unsupported torch_dtype '{dtype}'")
         return dtype_map[dtype]
 
-    def _setup_distributed_environment(self) -> None:
+    def _setup_distributed_environment(self) -> Tuple[int, int]:
         """Export distributed env (ranks/world size) and set CUDA device."""
         submitit.helpers.TorchDistributedEnvironment().export()
 
-        os.environ.setdefault("TORCH_NCCL_ASYNC_ERROR_HANDLING", "1")
-        os.environ.setdefault("TORCH_NCCL_BLOCKING_WAIT", "1")
-        os.environ.setdefault("NCCL_DEBUG", "INFO")
-        os.environ.setdefault("TORCH_DISTRIBUTED_DEBUG", "DETAIL")
+        rank = int(os.environ.get("RANK", "0"))
+        world_size = int(os.environ.get("WORLD_SIZE", "1"))
+
+        if rank == 0:
+            logging.getLogger().setLevel(logging.INFO)
+            hf_logging.set_verbosity_info()
+        else:
+            logging.getLogger().setLevel(logging.WARNING)
+            hf_logging.set_verbosity_error()
+
+        logging.getLogger("datasets").setLevel(logging.WARNING)
+        warnings.filterwarnings("ignore", category=FutureWarning)
 
         if torch.cuda.is_available():
-            visible = torch.cuda.device_count()
+            if "CUDA_VISIBLE_DEVICES" in os.environ:
+                # Each process sees only its own GPU -> index 0 is always correct
+                torch.cuda.set_device(0)
+                current_device = 0
+                num_visible = torch.cuda.device_count()  # typically 1 after masking
+            else:
+                local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+                torch.cuda.set_device(local_rank)
+                current_device = local_rank
+                num_visible = torch.cuda.device_count()
 
-            # Determine local rank from environment
-            local_rank_str = (
-                os.environ.get("LOCAL_RANK") or os.environ.get("SLURM_LOCALID") or "0"
-            )
-            local_rank = int(local_rank_str)
+            if rank == 0:
+                logger.info(
+                    "Distributed context initialized: rank=%s/%s, local_rank=%s, pid=%s, "
+                    "num_visible_gpus=%s, current_device=%s",
+                    os.environ.get("RANK", "?"),
+                    os.environ.get("WORLD_SIZE", "?"),
+                    os.environ.get("LOCAL_RANK", "?"),
+                    os.getpid(),
+                    num_visible,
+                    current_device,
+                )
+            else:
+                # keep a minimal signal on non-zero ranks for debugging
+                print(f"[Rank {rank}] Using CUDA device {current_device}", flush=True)
+        elif rank == 0:
+            logger.info("CUDA not available in this process (CPU mode).")
 
-            # If only 1 GPU visible (via CUDA_VISIBLE_DEVICES), use device 0;
-            # otherwise distribute tasks across visible GPUs using local_rank
-            torch.cuda.set_device(0 if visible == 1 else (local_rank % max(1, visible)))
+        return rank, world_size
 
-            # Log distributed training context for debugging
-            logger.info(
-                "Distributed context: rank=%s/%s local_rank=%s pid=%s cuda_visible=%s current_device=%s",
-                os.environ.get("RANK", "?"),
-                os.environ.get("WORLD_SIZE", "?"),
-                local_rank,
-                os.getpid(),
-                visible,
-                torch.cuda.current_device(),
-            )
-        else:
-            logger.info(
-                "CUDA not available in this process (likely submit host); skipping device setup."
-            )
-
-    def _prepare_dataset(self, cfg: DictConfig, tokenizer) -> Tuple[Dataset, Dataset]:
+    def _prepare_dataset(
+        self, cfg: DictConfig, tokenizer, rank
+    ) -> Tuple[Dataset, Dataset]:
         """Tokenize and chunk dataset splits for causal LM training."""
         data_cfg = cfg.trainer.data
         dataset_kwargs = OmegaConf.to_container(data_cfg.load_kwargs) or {}
@@ -139,30 +169,29 @@ class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
                 concatenated = [tok for seq in sequences for tok in seq]
                 total_length = (len(concatenated) // block_size) * block_size
                 if total_length == 0:
-                    out = {k: [] for k in examples}
-                    out.setdefault("input_ids", [])
-                    out.setdefault("labels", [])
-                    return out
+                    # no full block, return empty batch for this shard
+                    return {k: [] for k in examples}
                 result[key] = [
                     concatenated[i : i + block_size]
                     for i in range(0, total_length, block_size)
                 ]
-            result["labels"] = result["input_ids"].copy()
             return result
 
         train_blocks = tokenized_train.map(group_texts, batched=True)
         eval_blocks = tokenized_eval.map(group_texts, batched=True)
 
-        logger.info(
-            "Prepared datasets with %d train blocks and %d eval blocks (block size %d)",
-            len(train_blocks),
-            len(eval_blocks),
-            block_size,
-        )
+        if rank == 0:
+            logger.info(
+                "Prepared datasets with %d train blocks and %d eval blocks (block size %d)",
+                len(train_blocks),
+                len(eval_blocks),
+                block_size,
+            )
+
         return train_blocks, eval_blocks
 
     def _build_training_arguments(
-        self, cfg: DictConfig, out_dir: Path
+        self, cfg: DictConfig, out_dir: Path, rank: int
     ) -> TrainingArguments:
         """Construct TrainingArguments from resolved Hydra config."""
         train_cfg = cfg.trainer.train
@@ -170,6 +199,7 @@ class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
         logging_cfg = cfg.trainer.logging
 
         eval_strategy = train_cfg.eval_strategy
+
         kwargs: Dict[str, Any] = {
             "output_dir": str(out_dir),
             "overwrite_output_dir": True,
@@ -182,10 +212,7 @@ class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
             "warmup_steps": int(train_cfg.warmup_steps),
             "logging_strategy": "steps",
             "logging_steps": int(train_cfg.logging_steps),
-            "logging_first_step": bool(train_cfg.get("logging_first_step", True)),
-            "log_level": "info",
-            "log_level_replica": "warning",
-            "log_on_each_node": False,
+            "disable_tqdm": rank != 0,
             "eval_strategy": eval_strategy,
             "eval_steps": int(train_cfg.eval_steps),
             "save_strategy": train_cfg.save_strategy,
@@ -197,7 +224,6 @@ class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
             "bf16": bool(dist_cfg.get("bf16", False)),
             "optim": train_cfg.optim,
             "report_to": list(logging_cfg.report_to),
-            "dataloader_drop_last": True,
             "ddp_find_unused_parameters": False,
         }
 
@@ -212,18 +238,19 @@ class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
             if fsdp_config:
                 kwargs["fsdp_config"] = fsdp_config
         else:
-            # Auto-disable fsdp if not distributed
-            kwargs["fsdp"] = None
+            # Omit FSDP keys entirely if not used
+            kwargs.pop("fsdp", None)
+            kwargs.pop("fsdp_config", None)
 
         return TrainingArguments(**kwargs)
 
     def __call__(self, cfg: DictConfig):
         """Execute fine-tuning, handling checkpoints, training, and evaluation."""
+        rank, world_size = self._setup_distributed_environment()
+
         out_dir = Path(cfg.paths.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         self.ckpt_dir = self._latest_checkpoint(out_dir)
-
-        self._setup_distributed_environment()
 
         set_seed(int(cfg.trainer.seed))
 
@@ -251,9 +278,9 @@ class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
             **model_kwargs,
         )
 
-        train_dataset, eval_dataset = self._prepare_dataset(cfg, tokenizer)
+        train_dataset, eval_dataset = self._prepare_dataset(cfg, tokenizer, rank)
 
-        training_args = self._build_training_arguments(cfg, out_dir)
+        training_args = self._build_training_arguments(cfg, out_dir, rank)
 
         collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
         trainer = Trainer(
@@ -261,11 +288,14 @@ class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             data_collator=collator,
+            callbacks=[RankZeroLoggingCallback()],
         )
 
-        logger.info("Starting training loop")
+        if rank == 0:
+            logger.info("Starting training loop")
+
         train_result = trainer.train(resume_from_checkpoint=self.ckpt_dir)
 
         trainer.save_model()
@@ -274,16 +304,26 @@ class FinetuneDistributedTrainer(submitit.helpers.Checkpointable):
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
-        logger.info("Training complete. Beginning evaluation.")
+        if rank == 0:
+            logger.info("Training complete. Beginning evaluation.")
+
         eval_metrics = trainer.evaluate()
         if "eval_loss" in eval_metrics:
             eval_metrics["perplexity"] = math.exp(min(eval_metrics["eval_loss"], 20))
         trainer.log_metrics("eval", eval_metrics)
         trainer.save_metrics("eval", eval_metrics)
 
-        logger.info(
-            "All done. Train metrics: %s Eval metrics: %s", metrics, eval_metrics
-        )
+        if rank == 0:
+            logger.info(
+                "All done. Train metrics: %s Eval metrics: %s", metrics, eval_metrics
+            )
+        else:
+            print("All done.")
+
+        # Cleanup distributed process group
+        if torch.distributed.is_initialized():
+            torch.distributed.barrier()  # Ensure all ranks finish
+            torch.distributed.destroy_process_group()
 
     def checkpoint(
         self, *args: Any, **kwargs: Any
