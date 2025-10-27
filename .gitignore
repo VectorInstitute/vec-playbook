@@ -232,3 +232,5 @@ cache/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+/_submitit_logs/

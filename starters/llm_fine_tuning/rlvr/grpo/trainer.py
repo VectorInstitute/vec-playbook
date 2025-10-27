@@ -11,13 +11,13 @@ PYTHONPATH="." \
 uv run starters/llm_fine_tuning/rlvr/grpo/trainer.py \
 --tokenizer /model-weights/Qwen3-0.6B \
 --base_model /model-weights/Qwen3-0.6B \
---output_path $SCRATCH/checkpoints/20250924-GRPO-Qwen3-0.6B \
---kl_ref_model /model-weights/Qwen3-0.6B
+--checkpoint_folder $SCRATCH/checkpoints/20251027-GRPO-Qwen3-0.6B
 """
 
 import argparse
 import asyncio
 import logging
+import os
 import pathlib
 from typing import Literal, Sequence
 
@@ -41,6 +41,7 @@ from starters.llm_fine_tuning.rlvr.grpo.data_types import (
     AdvantageData,
     BatchForInference,
     GRPOData,
+    GRPOMetrics,
     PerTokenProbs,
     RewardDetailTokenized,
 )
@@ -105,8 +106,6 @@ async def roll_out(
     data: Sequence[RLVRDataItem],
     client: "openai.AsyncOpenAI",
     model_name: str,
-    semaphore_rollout: "asyncio.Semaphore",
-    semaphore_llm_judge: "asyncio.Semaphore",
 ) -> list[RewardDetails]:
     """Rollout online to get reward details, not yet tokenized."""
     example_agent_config = agents.RunConfig(
@@ -131,14 +130,13 @@ async def grpo_step(
     dataset: dict[Literal["train", "test"], Sequence[RLVRDataItem]],
     current_policy_path: pathlib.Path,
     checkpoint_path: pathlib.Path,
+    kl_ref_path: pathlib.Path,
     args,
-) -> pathlib.Path:
+) -> GRPOMetrics:
     """Run one GRPO step.
 
     Returns updated policy path.
     """
-    semaphore_rollout = asyncio.Semaphore(args.concurrency_rollout)
-    semaphore_llm_judge = asyncio.Semaphore(args.concurrency_llm_judge)
     tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(
         current_policy_path
     )
@@ -165,21 +163,16 @@ async def grpo_step(
                         data=_data,
                         client=policy_client,
                         model_name=model_name,
-                        semaphore_rollout=semaphore_rollout,
-                        semaphore_llm_judge=semaphore_llm_judge,
                     )
                 ]
             )
             for _split, _data in dataset.items()
         }
 
-    eval_advantage = np.mean(advantage_data["test"]._group_rewards()).item()
-    print(f"eval_advantage: {eval_advantage:.3f}")
-
     device = torch.device("cuda:0")
 
     logger.info("Loading kl_ref weights")
-    kl_ref_model = AutoModelForCausalLM.from_pretrained(args.kl_ref_model)
+    kl_ref_model = AutoModelForCausalLM.from_pretrained(kl_ref_path)
     logger.info("Loading kl_ref weights to CUDA.")
     kl_ref_model = kl_ref_model.to(device)
 
@@ -219,18 +212,26 @@ async def grpo_step(
     )
     base_model.save_pretrained(checkpoint_path)
     tokenizer.save_pretrained(checkpoint_path)
-    return checkpoint_path
+    return GRPOMetrics(
+        eval_advantage=np.mean(advantage_data["test"]._group_rewards()).item(),
+        train_advantage=np.mean(advantage_data["test"]._group_rewards()).item(),
+    )
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--base_model", required=True)
-parser.add_argument("--kl_ref_model", required=True)
-parser.add_argument("--output_path", required=True)
+parser.add_argument("--checkpoint_folder", required=True)
+parser.add_argument(
+    "--keep_all_checkpoints",
+    action="store_true",
+    help="If not set, only the most recent checkpoint would be kept.",
+)
 parser.add_argument("--tokenizer", required=True)
 parser.add_argument(
     "--bsz_inference", type=int, default=16, help="batch size for getting pi_ref"
 )
 parser.add_argument("--bsz_train", type=int, default=8, help="batch size for backprop")
+parser.add_argument("--num_steps", type=int, default=8, help="number of update steps")
 parser.add_argument("--num_rollout_workers", type=int, default=2)
 parser.add_argument("--concurrency_rollout", type=int, default=36)
 parser.add_argument("--concurrency_llm_judge", type=int, default=36)
@@ -247,7 +248,7 @@ if __name__ == "__main__":
     dataset_hf = datasets.load_dataset("openai/gsm8k", "main")
     assert isinstance(dataset_hf, datasets.DatasetDict)
 
-    dataset: dict[Literal["train", "test"], Sequence[RLVRDataItem]] = {
+    dataset_full: dict[Literal["train", "test"], Sequence[RLVRDataItem]] = {
         k: [
             RLVRDataItem(
                 query=_row["question"],
@@ -257,18 +258,32 @@ if __name__ == "__main__":
         ]
         for k, _split in dataset_hf.items()
     }
+    dataset = {
+        "train": dataset_full["train"][:1000],
+        "test": dataset_full["test"][:100],
+    }
     print({k: len(v) for k, v in dataset.items()})
 
-    # Replace with new checkpoint after each step
+    # start using base model as kl. Update this after each step.
+    checkpoint_folder = pathlib.Path(args.checkpoint_folder)
     current_policy_path = pathlib.Path(args.base_model)
+    kl_ref_path = current_policy_path
 
-    for _ in range(10):
-        current_policy_path = asyncio.run(
+    for _step_index in range(args.num_steps):
+        updated_checkpoint_path = checkpoint_folder / f"step_{_step_index}"
+        metrics = asyncio.run(
             grpo_step(
                 policy_agent=policy_agent,
                 dataset=dataset,
                 current_policy_path=current_policy_path,
-                checkpoint_path=args.output_path,
+                checkpoint_path=updated_checkpoint_path,
+                kl_ref_path=kl_ref_path,
                 args=args,
             )
         )
+
+        if (not args.keep_all_checkpoints) and (_step_index > 0):
+            os.rmdir(kl_ref_path)
+
+        kl_ref_path = current_policy_path
+        current_policy_path = updated_checkpoint_path

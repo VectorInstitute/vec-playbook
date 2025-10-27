@@ -7,9 +7,10 @@ PYTHONPATH="." uv run starters/llm_fine_tuning/rlvr/grpo/rollout_generation.py
 import asyncio
 import contextlib
 import os
-from typing import Any, Sequence
+from typing import Any, AsyncContextManager, Callable, Sequence
 
 import agents
+import openai
 import pydantic
 
 from starters.llm_fine_tuning.rlvr.agents_integration.rollout_translation import (
@@ -120,6 +121,7 @@ class RLVREvaluator:
         return response.final_output_as(RewardDetails)
 
 
+
 class GRPORollout:
     """GRPO Rollout Generation and reward calculation.
 
@@ -130,15 +132,24 @@ class GRPORollout:
         self,
         agent: "agents.Agent",
         evaluator: RLVREvaluator,
+        get_run_config: Callable[[], AsyncContextManager[openai.AsyncOpenAI]],
     ):
         self.agent = agent
         self.evaluator = evaluator
+        self.get_run_config = get_run_config
+
+
+    async def _run_one(self, data_item: RLVRDataItem) -> agents.RunResult:
+        """Run on one data item.
+
+        Handles async get_run_config.
+        """
+        async with get_run_config() as config
+
 
     async def generate(
         self,
         data: Sequence[RLVRDataItem],
-        agent_run_config: "agents.RunConfig",
-        semaphore: asyncio.Semaphore,
     ) -> list[RewardDetails]:
         """Generate RLVR reward details on given data and policy.
 
@@ -148,11 +159,8 @@ class GRPORollout:
 
         # Generate agent rollouts
         rollout_coros = [
-            rate_limited(
-                lambda _item=_item: agents.Runner.run(
-                    self.agent, _item.query, run_config=agent_run_config
-                ),
-                semaphore=semaphore,
+            agents.Runner.run(
+                self.agent, _item.query, run_config=agent_run_config
             )
             for _item in data
         ]
@@ -181,39 +189,3 @@ class GRPORollout:
             RewardDetails(**_eval.model_dump(), source_item=_item, rollout=_rollout)
             for _item, _eval, _rollout in zip(data, eval_results, full_rollouts)
         ]
-
-
-async def main():
-    """Integration tests."""
-    import openai
-
-    from starters.llm_fine_tuning.rlvr.agents.examples import weather_agent
-
-    client = openai.AsyncOpenAI()
-    example_agent_config = agents.RunConfig(
-        model=agents.OpenAIChatCompletionsModel(
-            model="Qwen3-0.6B", openai_client=client
-        )
-    )
-    evaluator = RLVREvaluator(
-        eval_agent,
-        agent_run_config=example_agent_config,
-        semaphore=asyncio.Semaphore(1),
-    )
-
-    rollout_generator = GRPORollout(weather_agent, evaluator=evaluator)
-    example_data = [
-        RLVRDataItem(query="Weather in Shanghai", target="28 degrees Celsius, clear"),
-        RLVRDataItem(query="Weather in Vancouver", target="10 degrees Celsius, cloudy"),
-    ]
-    rollouts = await rollout_generator.generate(
-        data=example_data,
-        agent_run_config=example_agent_config,
-        semaphore=asyncio.Semaphore(1),
-    )
-
-    print([_rollout.model_dump() for _rollout in rollouts][0])
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

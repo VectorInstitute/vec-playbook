@@ -121,6 +121,7 @@ def optimize_grpo_one_epoch(
     """
     model.train()
     device = next(model.parameters()).device
+    loss_metrics: list[float] = []
 
     optimizer = AdamW(
         model.parameters(),
@@ -169,6 +170,7 @@ def optimize_grpo_one_epoch(
                 ) / max(1, gradient_accumulation_steps)
 
             scaler.scale(loss_to_minimize).backward()
+            loss_metrics.append(loss_to_minimize.detach().cpu().item())
             accumulated_microbatches += 1
 
             if accumulated_microbatches % max(1, gradient_accumulation_steps) == 0:

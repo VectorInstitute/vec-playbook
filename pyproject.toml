@@ -13,15 +13,15 @@ description = "Starter templates that launch on Slurm via Hydra + Submitit"
 authors = [{name = "Farnaz Kohankhaki", email = "farnaz.kohankhaki@vectorinstitute.ai"}]
 requires-python = "==3.12.*"
 dependencies = [
-    "hydra-core>=1.3.2,<1.4",
-    "hydra-submitit-launcher>=1.2.0,<1.5",
-    "submitit>=1.5.0,<2.0",
-    "torch>=2.0.0,<2.6.0",
-    "transformers>=4.36.0,<4.52.0",
-    "datasets>=2.16.0,<3.6.0",
-    "accelerate>=0.26.0,<1.0.0",
+    "hydra-core>=1.3.2",
+    "hydra-submitit-launcher>=1.2.0",
+    "submitit>=1.5.0",
+    "torch>=2.0.0",
+    "transformers>=4.36.0",
+    "datasets>=2.16.0",
+    "accelerate>=0.26.0",
     "pyarrow==16.1.0",
-    "pillow>=10.0.0,<11.0.0",
+    "pillow>=10.0.0",
     "ruff>=0.1.0,<1.0.0",
     "pre-commit>=3.0.0,<4.0.0",
     "pydantic>=2.11.7",
@@ -32,6 +32,7 @@ dependencies = [
     "langfuse>=3.3.4",
     "nest-asyncio>=1.6.0",
     "pydantic-ai[logfire]>=1.0.6",
+    "vllm>=0.11.0",
 ]
 
 [dependency-groups]
@@ -67,3 +68,6 @@ convention = "numpy"
 
 [tool.ruff.lint.pycodestyle]
 max-doc-length = 88
+
+[tool.uv.sources]
+vec-inf = { path = "../vector-inference-20250912" }

@@ -329,3 +329,11 @@ class GRPOData(AdvantageData):
 
 
 GRPOBatcher = TypedBatcher[BatchForGRPO]
+
+class GRPOMetrics(pydantic.BaseModel):
+    """Metrics for GRPO."""
+
+    eval_advantage: float
+    train_advantage: float
+    train_loss: float | None = None
+    grad_norm: float
