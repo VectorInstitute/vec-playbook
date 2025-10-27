@@ -12,7 +12,7 @@ from starters.llm_fine_tuning.rlvr.data_collation.batch import (
     TypedBatcher,
 )
 from starters.llm_fine_tuning.rlvr.data_collation.data_types import TypedBatch
-from starters.llm_fine_tuning.rlvr.types import ChatMessage
+from starters.llm_fine_tuning.rlvr.shared_types import ChatMessage
 
 
 if TYPE_CHECKING:

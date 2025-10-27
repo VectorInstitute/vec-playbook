@@ -18,8 +18,7 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
 )
 
-from starters.llm_fine_tuning.rlvr.agents.examples import weather_agent
-from starters.llm_fine_tuning.rlvr.types import ChatMessage
+from starters.llm_fine_tuning.rlvr.shared_types import ChatMessage
 
 
 class Rollout(pydantic.BaseModel):
@@ -159,7 +158,9 @@ def _collect_reason_text_before(items: list[object], end: int) -> list[str]:
     return parts
 
 
-def _collect_function_tool_calls_before(items: list[object], end: int) -> list[dict[str, Any]]:
+def _collect_function_tool_calls_before(
+    items: list[object], end: int
+) -> list[dict[str, Any]]:
     """Collect function tool calls before the first tool output as `tool_calls`."""
     out: list[dict[str, Any]] = []
     for it in items[:end]:
@@ -177,7 +178,11 @@ def _collect_function_tool_calls_before(items: list[object], end: int) -> list[d
             _type = raw.get("type")
             call_id = raw.get("call_id")
 
-        if _type == "function_call" and isinstance(name, str) and isinstance(arguments, str):
+        if (
+            _type == "function_call"
+            and isinstance(name, str)
+            and isinstance(arguments, str)
+        ):
             entry: dict[str, Any] = {
                 "type": "function",
                 "function": {"name": name, "arguments": arguments},
@@ -197,7 +202,9 @@ def _build_assistant_tool_invocation_message(items: list[object]) -> ChatMessage
       `tool_calls`.
     """
     first_tool_output_idx = _find_first_tool_output_index(items)
-    scan_upto = first_tool_output_idx if first_tool_output_idx is not None else len(items)
+    scan_upto = (
+        first_tool_output_idx if first_tool_output_idx is not None else len(items)
+    )
 
     reason_text_parts = _collect_reason_text_before(items, scan_upto)
     tool_calls = _collect_function_tool_calls_before(items, scan_upto)
@@ -209,7 +216,9 @@ def _build_assistant_tool_invocation_message(items: list[object]) -> ChatMessage
     asst_typed: ChatCompletionAssistantMessageParam = {
         "role": "assistant",
         "content": content_str or None,
-        "tool_calls": cast("list[ChatCompletionMessageFunctionToolCallParam]", tool_calls),
+        "tool_calls": cast(
+            "list[ChatCompletionMessageFunctionToolCallParam]", tool_calls
+        ),
     }
     return cast(ChatMessage, asst_typed)
 
@@ -268,6 +277,8 @@ async def main():
 
 if __name__ == "__main__":
     from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
+
+    from starters.llm_fine_tuning.rlvr.agents_integration.examples import weather_agent
 
     MODEL_NAME = "Qwen3-0.6B"
     MODEL_PATH = f"/model-weights/{MODEL_NAME}"

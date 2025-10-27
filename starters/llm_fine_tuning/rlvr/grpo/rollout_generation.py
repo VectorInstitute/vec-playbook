@@ -12,7 +12,7 @@ from typing import Any, Sequence
 import agents
 import pydantic
 
-from starters.llm_fine_tuning.rlvr.agents.rollout_translation import (
+from starters.llm_fine_tuning.rlvr.agents_integration.rollout_translation import (
     Rollout,
     translate_rollout,
 )

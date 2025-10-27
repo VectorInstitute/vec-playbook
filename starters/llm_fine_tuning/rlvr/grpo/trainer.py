@@ -11,15 +11,18 @@ PYTHONPATH="." \
 uv run starters/llm_fine_tuning/rlvr/grpo/trainer.py \
 --tokenizer /model-weights/Qwen3-0.6B \
 --base_model /model-weights/Qwen3-0.6B \
+--output_path $SCRATCH/checkpoints/20250924-GRPO-Qwen3-0.6B \
 --kl_ref_model /model-weights/Qwen3-0.6B
 """
 
 import argparse
 import asyncio
 import logging
+import pathlib
 from typing import Literal, Sequence
 
 import agents
+import datasets
 import numpy as np
 import openai
 import torch
@@ -29,9 +32,11 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     PreTrainedModel,
+    PreTrainedTokenizerFast,
 )
+from vec_inf.client import LaunchOptions
+from vec_inf.client.oai_compatibility import AsyncVecInf
 
-from starters.llm_fine_tuning.rlvr.agents.examples import weather_agent
 from starters.llm_fine_tuning.rlvr.grpo.data_types import (
     AdvantageData,
     BatchForInference,
@@ -96,6 +101,7 @@ def get_per_token_probs(
 
 
 async def roll_out(
+    policy_agent: agents.Agent,
     data: Sequence[RLVRDataItem],
     client: "openai.AsyncOpenAI",
     model_name: str,
@@ -112,7 +118,7 @@ async def roll_out(
         semaphore=semaphore_llm_judge,
     )
 
-    rollout_generator = GRPORollout(weather_agent, evaluator=evaluator)
+    rollout_generator = GRPORollout(policy_agent, evaluator=evaluator)
     return await rollout_generator.generate(
         data=data,
         agent_run_config=example_agent_config,
@@ -120,38 +126,32 @@ async def roll_out(
     )
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--base_model", required=True)
-parser.add_argument("--kl_ref_model", required=True)
-parser.add_argument("--tokenizer", required=True)
-parser.add_argument(
-    "--bsz_inference", type=int, default=16, help="batch size for getting pi_ref"
-)
-parser.add_argument("--bsz_train", type=int, default=8, help="batch size for backprop")
-parser.add_argument("--concurrency_rollout", type=int, default=36)
-parser.add_argument("--concurrency_llm_judge", type=int, default=36)
+async def grpo_step(
+    policy_agent: agents.Agent,
+    dataset: dict[Literal["train", "test"], Sequence[RLVRDataItem]],
+    current_policy_path: pathlib.Path,
+    checkpoint_path: pathlib.Path,
+    args,
+) -> pathlib.Path:
+    """Run one GRPO step.
 
-example_data = [
-    RLVRDataItem(query="Weather in Shanghai", target="28 degrees Celsius, clear"),
-    RLVRDataItem(
-        query="Weather in Vancouver", target="-10 degrees Celsius, heavy snow"
-    ),
-]
-example_dataset: dict[Literal["train", "test"], Sequence[RLVRDataItem]] = {
-    "train": example_data,
-    "test": example_data,
-}
-
-if __name__ == "__main__":
-    args = parser.parse_args()
-    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
-    logger.info(f"Tokenizer: {tokenizer}")
+    Returns updated policy path.
+    """
     semaphore_rollout = asyncio.Semaphore(args.concurrency_rollout)
     semaphore_llm_judge = asyncio.Semaphore(args.concurrency_llm_judge)
+    tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(
+        current_policy_path
+    )
+    model_name = current_policy_path.parts[-1]
 
-    for _step in range(72):
-        # Generate on-policy rollouts and rewards- not tokenized yet.
-        # TODO: replace client and model_name with OpenAI-compatible vec-inf wrapper.
+    async with AsyncVecInf(
+        model=model_name,
+        num_replicas=args.num_rollout_workers,
+        options=LaunchOptions(
+            qos="scavenger",
+            model_weights_parent_dir=current_policy_path.parent.as_posix(),
+        ),
+    ) as policy_client:
         advantage_data = {
             _split: AdvantageData.from_list_of_rewards(
                 [
@@ -160,60 +160,115 @@ if __name__ == "__main__":
                         reward=_detail.score,
                         tokenizer=tokenizer,
                     )
-                    for _detail in asyncio.run(
-                        roll_out(
-                            data=_data,
-                            client=openai.AsyncOpenAI(api_key="EMPTY"),
-                            model_name="Qwen3-0.6B",
-                            semaphore_rollout=semaphore_rollout,
-                            semaphore_llm_judge=semaphore_llm_judge,
-                        )
+                    for _detail in await roll_out(
+                        policy_agent=policy_agent,
+                        data=_data,
+                        client=policy_client,
+                        model_name=model_name,
+                        semaphore_rollout=semaphore_rollout,
+                        semaphore_llm_judge=semaphore_llm_judge,
                     )
                 ]
             )
-            for _split, _data in example_dataset.items()
+            for _split, _data in dataset.items()
         }
-        eval_advantage = np.mean(advantage_data["test"]._group_rewards()).item()
-        print(f"Step {_step}, eval_advantage: {eval_advantage:.3f}")
 
-        device = torch.device("cuda:0")
+    eval_advantage = np.mean(advantage_data["test"]._group_rewards()).item()
+    print(f"eval_advantage: {eval_advantage:.3f}")
 
-        logger.info("Loading kl_ref weights")
-        kl_ref_model = AutoModelForCausalLM.from_pretrained(args.kl_ref_model)
-        logger.info("Loading kl_ref weights to CUDA.")
-        kl_ref_model = kl_ref_model.to(device)
+    device = torch.device("cuda:0")
 
-        per_token_probs_ref = sum(
-            get_per_token_probs(_batch, kl_ref_model)
-            for _batch in track(
-                advantage_data["train"].get_iterator_for_inference(batch_size=5),
-                description="Inference: pi_ref",
+    logger.info("Loading kl_ref weights")
+    kl_ref_model = AutoModelForCausalLM.from_pretrained(args.kl_ref_model)
+    logger.info("Loading kl_ref weights to CUDA.")
+    kl_ref_model = kl_ref_model.to(device)
+
+    per_token_probs_ref = sum(
+        get_per_token_probs(_batch, kl_ref_model)
+        for _batch in track(
+            advantage_data["train"].get_iterator_for_inference(batch_size=5),
+            description="Inference: pi_ref",
+        )
+    )
+    del kl_ref_model
+
+    base_model = AutoModelForCausalLM.from_pretrained(current_policy_path)
+    logger.info("Loading weights to CUDA.")
+    base_model = base_model.to(device)
+
+    per_token_probs_base = sum(
+        get_per_token_probs(_batch, base_model)
+        for _batch in track(
+            advantage_data["train"].get_iterator_for_inference(batch_size=5),
+            description="Inference: pi_old",
+        )
+    )
+
+    assert isinstance(per_token_probs_ref, PerTokenProbs)
+    assert isinstance(per_token_probs_base, PerTokenProbs)
+    grpo_data = GRPOData(
+        **advantage_data["train"].model_dump(),
+        ref_probs=per_token_probs_ref,
+        base_probs=per_token_probs_base,
+    )
+
+    base_model = optimize_grpo_one_epoch(
+        batcher=grpo_data.get_iterator_for_training(batch_size=args.bsz_train),
+        model=base_model,
+        gradient_accumulation_steps=1,
+    )
+    base_model.save_pretrained(checkpoint_path)
+    tokenizer.save_pretrained(checkpoint_path)
+    return checkpoint_path
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--base_model", required=True)
+parser.add_argument("--kl_ref_model", required=True)
+parser.add_argument("--output_path", required=True)
+parser.add_argument("--tokenizer", required=True)
+parser.add_argument(
+    "--bsz_inference", type=int, default=16, help="batch size for getting pi_ref"
+)
+parser.add_argument("--bsz_train", type=int, default=8, help="batch size for backprop")
+parser.add_argument("--num_rollout_workers", type=int, default=2)
+parser.add_argument("--concurrency_rollout", type=int, default=36)
+parser.add_argument("--concurrency_llm_judge", type=int, default=36)
+
+
+policy_agent = agents.Agent(
+    "Math Problem Solver", instructions="Solve the math problem."
+)
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+
+    dataset_hf = datasets.load_dataset("openai/gsm8k", "main")
+    assert isinstance(dataset_hf, datasets.DatasetDict)
+
+    dataset: dict[Literal["train", "test"], Sequence[RLVRDataItem]] = {
+        k: [
+            RLVRDataItem(
+                query=_row["question"],
+                target=_row["answer"].split("#")[-1].strip(),
             )
-        )
-        del kl_ref_model
+            for _row in _split
+        ]
+        for k, _split in dataset_hf.items()
+    }
+    print({k: len(v) for k, v in dataset.items()})
 
-        base_model = AutoModelForCausalLM.from_pretrained(args.base_model)
-        logger.info("Loading weights to CUDA.")
-        base_model = base_model.to(device)
+    # Replace with new checkpoint after each step
+    current_policy_path = pathlib.Path(args.base_model)
 
-        per_token_probs_base = sum(
-            get_per_token_probs(_batch, base_model)
-            for _batch in track(
-                advantage_data["train"].get_iterator_for_inference(batch_size=5),
-                description="Inference: pi_old",
+    for _ in range(10):
+        current_policy_path = asyncio.run(
+            grpo_step(
+                policy_agent=policy_agent,
+                dataset=dataset,
+                current_policy_path=current_policy_path,
+                checkpoint_path=args.output_path,
+                args=args,
             )
-        )
-
-        assert isinstance(per_token_probs_ref, PerTokenProbs)
-        assert isinstance(per_token_probs_base, PerTokenProbs)
-        grpo_data = GRPOData(
-            **advantage_data["train"].model_dump(),
-            ref_probs=per_token_probs_ref,
-            base_probs=per_token_probs_base,
-        )
-
-        base_model = optimize_grpo_one_epoch(
-            batcher=grpo_data.get_iterator_for_training(batch_size=args.bsz_train),
-            model=base_model,
-            gradient_accumulation_steps=1,
         )
