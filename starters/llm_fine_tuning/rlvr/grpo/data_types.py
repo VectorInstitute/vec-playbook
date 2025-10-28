@@ -1,9 +1,10 @@
 """Data types for GRPO."""
 
-from typing import TYPE_CHECKING, Annotated, Any, Sequence
+from typing import Annotated, Any, Sequence
 
 import numpy as np
 import pydantic
+import torch
 from pydantic.json_schema import SkipJsonSchema
 from transformers import PreTrainedTokenizerFast
 
@@ -13,10 +14,6 @@ from starters.llm_fine_tuning.rlvr.data_collation.batch import (
 )
 from starters.llm_fine_tuning.rlvr.data_collation.data_types import TypedBatch
 from starters.llm_fine_tuning.rlvr.shared_types import ChatMessage
-
-
-if TYPE_CHECKING:
-    import torch
 
 
 def _assistant_char_spans(
@@ -122,80 +119,54 @@ class _AdvantageDetail(RewardDetailTokenized):
 
 
 class PerTokenProbs(pydantic.BaseModel):
-    """Per-token probability output.
+    """Per-token probability output stored as dense tensors.
 
-    If input_id is int array of shape (batch, length, vocab_size), then
-    - "full" would be float array of shape (batch, length - 1, vocab_size)
-    - "selected" would be float array of shape (batch, length - 1)
+    Attributes
+    ----------
+    full:
+        Tensor of shape (batch, max_len, vocab_size) with next-token distributions.
+    selected:
+        Tensor of shape (batch, max_len) containing probabilities for taken tokens.
+    attention_mask:
+        Boolean tensor of shape (batch, max_len) indicating valid token positions.
     """
 
-    full: list[list[list[float]]]
-    selected: list[list[float]]
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
+    full: torch.Tensor
+    selected: torch.Tensor
+    attention_mask: torch.Tensor
 
     def __add__(self, other: "PerTokenProbs") -> "PerTokenProbs":
         """Concatenate along the batch axis (first dimension)."""
+        if not isinstance(other, PerTokenProbs):
+            return NotImplemented
+
+        if self.attention_mask.shape[1:] != other.attention_mask.shape[1:]:
+            msg = (
+                "Cannot concatenate PerTokenProbs with mismatched token dimensions. "
+                f"left={tuple(self.attention_mask.shape)} "
+                f"right={tuple(other.attention_mask.shape)}"
+            )
+            raise ValueError(msg)
+
         return PerTokenProbs(
-            full=self.full + other.full,
-            selected=self.selected + other.selected,
+            full=torch.cat((self.full, other.full), dim=0),
+            selected=torch.cat((self.selected, other.selected), dim=0),
+            attention_mask=torch.cat(
+                (self.attention_mask, other.attention_mask), dim=0
+            ),
         )
 
     def __radd__(self, other: object) -> "PerTokenProbs":
         """Support sum(..., other=0)."""
-        if not isinstance(other, PerTokenProbs):
+        if isinstance(other, int) and other == 0:
             return self
 
-        return self + other
+        if isinstance(other, PerTokenProbs):
+            return other + self
 
-    @staticmethod
-    def from_batch(
-        attention_mask: np.ndarray,
-        num_valid: int,
-        full: np.ndarray,
-        selected: np.ndarray,
-    ):
-        """Slice batch and extract non-padding probs only.
-
-        The outputs (full and selected) both start at the second token.
-        The first token in attention mask is not included in the output.
-
-        Params:
-        -------
-            attention_mask: bool array of shape (batch, input_tokens)
-            num_valid: keep up to the first num_valid items.
-                (assume that the following rows are paddings.)
-            full: float array of shape (batch, input_tokens - 1, vocab)
-            selected: float array of shape (batch, input_tokens - 1)
-        """
-        batch_size, num_input_tokens = attention_mask.shape
-        if not (
-            (full.shape[:2] == (batch_size, num_input_tokens - 1))
-            and (selected.shape == (batch_size, num_input_tokens - 1))
-        ):
-            msg = (
-                f"attention_mask.shape {attention_mask.shape} "
-                "(batch, num_gen_tokens) did not match "
-                f"full.shape {full.shape} (batch, num_gen_tokens - 1, vocab) "
-                f"selected.shape {selected.shape} (batch, num_gen_tokens - 1)."
-            )
-            raise ValueError(msg)
-
-        # Exclude first input token, which is not part of any output.
-        attention_mask_shifted = attention_mask[:, 1:]
-
-        return PerTokenProbs(
-            full=[
-                np.compress(_mask, _full, axis=0).tolist()
-                for _mask, _full in zip(
-                    attention_mask_shifted[:num_valid], full[:num_valid]
-                )
-            ],
-            selected=[
-                np.compress(_mask, _selected, axis=0).tolist()
-                for _mask, _selected in zip(
-                    attention_mask_shifted[:num_valid], selected[:num_valid]
-                )
-            ],
-        )
+        return NotImplemented
 
 
 class BatchForInference(TypedBatch):
@@ -276,7 +247,7 @@ class AdvantageData(pydantic.BaseModel):
         return AdvantageData(advantage_details=advantage_details)
 
     def get_iterator_for_inference(
-        self, batch_size: int, pad_to_length: int | None = None
+        self, batch_size: int, pad_to_length: int
     ) -> TypedBatcher[BatchForInference]:
         """Obtain batched iterator for inference."""
         return TypedBatcher(
@@ -299,7 +270,7 @@ class GRPOData(AdvantageData):
     base_probs: PerTokenProbs
 
     def get_iterator_for_training(
-        self, batch_size: int, pad_to_length: int | None = None
+        self, batch_size: int, pad_to_length: int
     ) -> TypedBatcher[BatchForGRPO]:
         """Obtain batched iterator for training."""
         probability_selected_field = FieldConfig(padding_value=0, dtype=float)
@@ -314,8 +285,8 @@ class GRPOData(AdvantageData):
                 "per_token_advantage": [
                     _advantage.advantages for _advantage in self.advantage_details
                 ],
-                "pi_selected_ref": self.ref_probs.selected,
-                "pi_selected_base": self.base_probs.selected,
+                "pi_selected_ref": self.ref_probs.selected.detach().cpu().tolist(),
+                "pi_selected_base": self.base_probs.selected.detach().cpu().tolist(),
             },
             batch_model=BatchForGRPO,
             field_configs={
@@ -332,6 +303,7 @@ class GRPOData(AdvantageData):
 
 GRPOBatcher = TypedBatcher[BatchForGRPO]
 
+
 class GRPOMetrics(pydantic.BaseModel):
     """Metrics for GRPO."""
 
@@ -347,6 +319,7 @@ class GRPOHyperparameters(pydantic.BaseModel):
     parameters related to numerical values.
     """
 
+    max_model_len: int
     train_batch_size: int
 
     # for forward pass only, and not for vLLM rollout.

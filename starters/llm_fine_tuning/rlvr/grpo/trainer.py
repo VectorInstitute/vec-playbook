@@ -72,65 +72,6 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-def get_per_token_probs(
-    batch: BatchForInference, model: "PreTrainedModel"
-) -> PerTokenProbs:
-    """Obtain per-token probs for a given batch and a given model.
-
-    Params:
-        batch: Tokenized _Batch (batch, length).
-        model: Pretrained Causal LM.
-
-    Return:
-    -------
-        np.ndarray (batch, length - 1, vocab_size)
-    """
-    device = model.device
-    input_ids = torch.as_tensor(batch.input_ids, dtype=torch.long, device=device)
-    attention_mask = torch.as_tensor(
-        batch.attention_mask, dtype=torch.long, device=device
-    )
-    print("input_ids", input_ids.shape)
-    print("attention_mask", attention_mask.shape)
-
-    with torch.inference_mode():
-        start_time = time.perf_counter()
-        output = model(input_ids=input_ids, attention_mask=attention_mask)
-        # logits: (batch, length, vocab) where
-        # (j, k, :) contains distribution for tokens k+1 of batch j.
-        logits = output.logits
-        print("logits", logits.shape, time.perf_counter() - start_time)
-        # (batch, length - 1, vocab) skipping last token which has no label.
-        # for all possible vocabs.
-        probabilities_all = softmax(logits, dim=-1)[:, :-1, :]
-        print(
-            "probabilities_all",
-            probabilities_all.shape,
-            time.perf_counter() - start_time,
-        )
-        # (batch, length - 1, 1) skipping first token which is always given.
-        target_token_ids = input_ids[:, 1:].unsqueeze(-1)
-        print(
-            "target_token_ids", target_token_ids.shape, time.perf_counter() - start_time
-        )
-        # (batch, length - 1) for input_ids only.
-        probabilities_selected = torch.gather(
-            probabilities_all, dim=-1, index=target_token_ids
-        ).squeeze(-1)
-        print(
-            "probabilities_selected",
-            probabilities_selected.shape,
-            time.perf_counter() - start_time,
-        )
-
-    return PerTokenProbs.from_batch(
-        attention_mask=batch.attention_mask,
-        num_valid=batch.num_valid,
-        full=probabilities_all.float().cpu().numpy(),
-        selected=probabilities_selected.float().cpu().numpy(),
-    )
-
-
 async def roll_out(
     policy_agent: agents.Agent,
     data: Sequence[RLVRDataItem],
@@ -172,6 +113,50 @@ async def get_grpo_advantage(
     )
 
 
+def get_per_token_probs(
+    batch: BatchForInference, model: "PreTrainedModel"
+) -> PerTokenProbs:
+    """Obtain per-token probs for a given batch and a given model.
+
+    Params:
+        batch: Tokenized _Batch (batch, length).
+        model: Pretrained Causal LM.
+
+    Returns
+    -------
+        PerTokenProbs storing dense torch tensors on the model device.
+    """
+    device = model.device
+    input_ids = torch.as_tensor(batch.input_ids, dtype=torch.long, device=device)
+    attention_mask = torch.as_tensor(
+        batch.attention_mask, dtype=torch.long, device=device
+    )
+
+    with torch.inference_mode():
+        output = model(input_ids=input_ids, attention_mask=attention_mask)
+        # logits: (batch, length, vocab) where
+        # (j, k, :) contains distribution for tokens k+1 of batch j.
+        logits = output.logits
+
+        # (batch, length - 1, vocab) skipping last token which has no label.
+        # for all possible vocabs.
+        probabilities_all = softmax(logits, dim=-1)[:, :-1, :]
+
+        # (batch, length - 1, 1) skipping first token which is always given.
+        target_token_ids = input_ids[:, 1:].unsqueeze(-1)
+
+        # (batch, length - 1) for input_ids only.
+        probabilities_selected = torch.gather(
+            probabilities_all, dim=-1, index=target_token_ids
+        ).squeeze(-1)
+
+    return PerTokenProbs(
+        attention_mask=attention_mask[: batch.num_valid],
+        full=probabilities_all.detach()[: batch.num_valid],
+        selected=probabilities_selected.detach()[: batch.num_valid],
+    )
+
+
 def grpo_optimization_step(
     advantage_data: AdvantageData,
     current_policy_path: pathlib.Path,
@@ -195,7 +180,8 @@ def grpo_optimization_step(
         get_per_token_probs(_batch, kl_ref_model)
         for _batch in track(
             advantage_data.get_iterator_for_inference(
-                batch_size=hyperparameters.inference_batch_size
+                batch_size=hyperparameters.inference_batch_size,
+                pad_to_length=hyperparameters.max_model_len,
             ),
             description="Inference: pi_ref",
         )
@@ -211,7 +197,8 @@ def grpo_optimization_step(
         get_per_token_probs(_batch, base_model)
         for _batch in track(
             advantage_data.get_iterator_for_inference(
-                batch_size=hyperparameters.inference_batch_size
+                batch_size=hyperparameters.inference_batch_size,
+                pad_to_length=hyperparameters.max_model_len,
             ),
             description="Inference: pi_old",
         )
@@ -227,7 +214,8 @@ def grpo_optimization_step(
 
     base_model, metrics = optimize_grpo_one_epoch(
         batcher=grpo_data.get_iterator_for_training(
-            batch_size=hyperparameters.train_batch_size
+            pad_to_length=hyperparameters.max_model_len,
+            batch_size=hyperparameters.train_batch_size,
         ),
         model=base_model,
         gradient_accumulation_steps=1,
@@ -253,7 +241,7 @@ parser.add_argument(
     help="If not set, only the most recent checkpoint would be kept.",
 )
 parser.add_argument("--tokenizer", required=True)
-parser.add_argument("--max_model_len", type=int)
+parser.add_argument("--max_model_len", type=int, default=2048)
 parser.add_argument(
     "--bsz_inference", type=int, default=2, help="batch size for getting pi_ref and kl"
 )
@@ -294,7 +282,9 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     hyperparameters = GRPOHyperparameters(
-        train_batch_size=args.bsz_train, inference_batch_size=args.bsz_inference
+        train_batch_size=args.bsz_train,
+        inference_batch_size=args.bsz_inference,
+        max_model_len=args.max_model_len,
     )
 
     dataset_hf = datasets.load_dataset("openai/gsm8k", "main")
@@ -355,7 +345,7 @@ if __name__ == "__main__":
                         compilation_config=CompilationConfig(
                             cache_dir=f"{args.vllm_cache_dir}/policy"
                         ),
-                        max_model_len=args.max_model_len,
+                        max_model_len=hyperparameters.max_model_len,
                     ),
                     submitit_executor=submitit_executor,
                     concurrency_per_worker=args.vllm_concurrency,
@@ -383,7 +373,8 @@ if __name__ == "__main__":
                             dataset[_split],
                             policy_vllm=policy_vllm,
                             evaluator_vllm=evaluator_vllm,
-                            tokenizer=tokenizer, max_len=args.max_model_len
+                            tokenizer=tokenizer,
+                            max_len=args.max_model_len,
                         )
                     )
                     for _split in ("train", "test")

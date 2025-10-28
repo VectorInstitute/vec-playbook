@@ -11,9 +11,9 @@
 - Use type hints where ever appropriate.
 - The codebase uses a modern version of Python. Use `list[...]` instead of `typing.List[...]`. No need to import `annotations`.
 - Try to minimize indentation.
+- Keep checks minimal. Defensive guardrail should not be included in your code.
 
 ## Notes for agents
 
-- Always load environment variables from `.envrc` before executing commands.
 - All python commands should be invoked through `uv run`.
 - If some code looks out of place or could be simplified, go ahead and fix the code, even if that is not directly part of the request.

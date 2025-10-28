@@ -31,23 +31,17 @@ class TypedBatcher(Generic[T]):
 
     def __init__(
         self,
-        field_data: dict[str, list[list]],
+        field_data: dict[str, list[list]], # TODO: allow for numpy/torch tensor input
         batch_model: Type[T],
         field_configs: dict[str, FieldConfig],
         batch_size: int,
-        pad_to_length: int | None = None,
+        pad_to_length: int,
     ):
         self.field_data = field_data
         self.batch_model = batch_model
         self.batch_size = batch_size
         self.fields = field_configs
 
-        # Use length of longest sequence as padding length if not provided.
-        # TODO: implement dynamic padding (each batch is padded to longest seq.)
-        if not pad_to_length:
-            pad_to_length = max(
-                len(seq) for sequences in field_data.values() for seq in sequences
-            )
         self.pad_to_length = pad_to_length
 
         # Validate all fields have same number of sequences
