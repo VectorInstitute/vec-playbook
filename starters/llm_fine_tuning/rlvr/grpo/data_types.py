@@ -69,6 +69,7 @@ class RewardDetailTokenized(pydantic.BaseModel):
         messages: list[ChatMessage],
         reward: float,
         tokenizer: PreTrainedTokenizerFast,
+        pad_to: int,
     ) -> "RewardDetailTokenized":
         """Tokenize a chat and create a per-token boolean loss mask."""
         chat_template = getattr(tokenizer, "chat_template", None)
@@ -90,6 +91,7 @@ class RewardDetailTokenized(pydantic.BaseModel):
             add_special_tokens=add_special_tokens,
             return_offsets_mapping=True,  # requires FastTokenizer
             truncation=False,
+            pad_to=pad_to,
         )
         input_ids: list[int] = enc["input_ids"]
         offsets: list[tuple[int, int]] = enc["offset_mapping"]
@@ -333,7 +335,19 @@ GRPOBatcher = TypedBatcher[BatchForGRPO]
 class GRPOMetrics(pydantic.BaseModel):
     """Metrics for GRPO."""
 
-    eval_advantage: float
-    train_advantage: float
-    train_loss: float | None = None
-    grad_norm: float
+    advantage: float | None = None
+    loss_metrics: list[float] | None = None
+    grad_norm: float | None = None
+
+
+class GRPOHyperparameters(pydantic.BaseModel):
+    """GRPO Hyperparameters.
+
+    TODO: divide into performance-related parameters and
+    parameters related to numerical values.
+    """
+
+    train_batch_size: int
+
+    # for forward pass only, and not for vLLM rollout.
+    inference_batch_size: int

@@ -4,13 +4,21 @@ import asyncio
 import dataclasses
 import json
 import logging
+import os
 import re
 import types
 import uuid
 from collections import Counter
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Mapping, Sequence, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Coroutine,
+    Mapping,
+    Sequence,
+    TypeVar,
+)
 
 import backoff
 import httpx
@@ -19,11 +27,13 @@ import pydantic
 import submitit
 from httpx import URL
 from rich.progress import Progress
+from vllm.config import CompilationConfig
 from vllm.engine.arg_utils import EngineArgs
 
 
 T = TypeVar("T")
 VLLM_CLI_PREFIX = "uv run vllm serve"
+SERVED_MODEL_NAME = "model"
 VLLM_URL_PATTERN = re.compile(r"http:\/\/0\.0\.0\.0[:\.](\d{1,5})", re.DOTALL)
 VLLM_READY_PATTERN = re.compile(r"startup complete", re.DOTALL)
 
@@ -39,6 +49,7 @@ class SubmititArgs(pydantic.BaseModel):
     cpus_per_task: str | None = "16"
     gres: str | None = "gpu:1"
     time: str = "1:00:00"
+    use_srun: bool = False
 
     def to_submitit_parameters(self) -> dict[str, int | str]:
         """Produce submit-compatible dict consisting of non-None values."""
@@ -105,8 +116,8 @@ def get_vllm_cli_args(
     }
 
     # Add only non-default values to cli.
-    # "model" flag must be specified as a position arg.
-    output = [*vllm_cli_prefix, engine_args_patch.pop(("model",))]
+    # SERVED_MODEL_NAME flag must be specified as a position arg.
+    output = [*vllm_cli_prefix, engine_args_patch.pop((SERVED_MODEL_NAME,))]
     for k, v in engine_args_patch.items():
         if isinstance(v, bool):
             if v:
@@ -202,9 +213,10 @@ class SubmititVLLMWorker:
         self,
         engine_args: "EngineArgs",
         submitit_executor: submitit.SlurmExecutor,
+        max_num_timeouts: int,
         vllm_cli_prefix: str | list[str] = VLLM_CLI_PREFIX,
-        max_timeouts: int = 5,
         worker_name: str = __name__,
+        ping_sticky_seconds: float = 1.0,
     ):
         """
         Create Submitit watcher.
@@ -223,9 +235,11 @@ class SubmititVLLMWorker:
         - submitit_args: configs for submitit
         - vllm_cli_prefix: shell command for launching `vllm serve`.
         - worker_name: for logging.
-        - max_timeouts: restart worker if it times out after this many checks.
+        - max_num_timeouts: restart worker if it times out after this many checks.
+        - ping_sticky_seconds: each successful ping is valid for this many seconds.
         """
         self.logger = logging.getLogger(worker_name)
+        self.metrics_logger = logging.getLogger(f"{worker_name}.metrics")
 
         # remote backend: url is None when backend is not ready.
         self.remote_status_signal = asyncio.Event()
@@ -238,7 +252,10 @@ class SubmititVLLMWorker:
         self.watcher_task: asyncio.Task[None]
         self.submitit_job, self.watcher_task = self._launch_worker()
 
-        self.max_timeouts = max_timeouts
+        self.ping_lock = asyncio.Lock()
+        self.ping_is_ready: bool = False
+        self.ping_sticky_seconds = ping_sticky_seconds
+        self.max_num_timeouts = max_num_timeouts
         self.num_timeouts = 0
 
     def _launch_worker(self):
@@ -248,7 +265,7 @@ class SubmititVLLMWorker:
         self.logger.info(f"Launched: {submitit_job}")
         self.num_timeouts = 0
 
-        watcher_task = asyncio.create_task(
+        watcher_task = asyncio.get_event_loop().create_task(
             async_tail_job_logs(
                 submitit_job,
                 on_stdout=self._handle_job_output,
@@ -276,8 +293,11 @@ class SubmititVLLMWorker:
         # This callback is running within the previous self.watcher_task
         # stop the previous watcher_task only after launching a new one.
         previous_watcher_task = self.watcher_task
+        previous_job = self.submitit_job
         self.submitit_job, self.watcher_task = self._launch_worker()
-        self.logger.info(f"Job interrupted. Relaunched {self.submitit_job}")
+        self.logger.info(
+            f"Job interrupted: {previous_job}. Relaunched: {self.submitit_job}"
+        )
 
         # Raise exceptions (if any) from the previous watcher task.
         if not previous_watcher_task.cancel():
@@ -289,6 +309,9 @@ class SubmititVLLMWorker:
         Handles job output one line at a time.
         """
         self.logger.debug(log_line)
+        if "throughput" in log_line:
+            self.metrics_logger.info(log_line)
+
         url_port_match = VLLM_URL_PATTERN.search(log_line)
         ready_match = VLLM_READY_PATTERN.search(log_line)
 
@@ -315,13 +338,30 @@ class SubmititVLLMWorker:
     async def _test_if_ready(self) -> bool:
         """Check if the server is ready and reachable."""
         await self.remote_status_signal.wait()
-        assert self.base_url is not None
-        try:
-            response = await httpx.AsyncClient().get(f"{self.base_url}/ping")
-            return response.status_code < 300
-        except (httpx.RequestError, httpx.TimeoutException) as e:
-            self.logger.info(e)
-            return False
+
+        # Max one ping at a time
+        async with self.ping_lock:
+            # Each successful ping is good for ping_sticky_seconds.
+            if self.ping_is_ready:
+                return True
+
+            assert self.base_url is not None
+            try:
+                response = await httpx.AsyncClient().get(f"{self.base_url}/ping")
+                response.raise_for_status()
+            except (httpx.RequestError, httpx.TimeoutException) as e:
+                self.logger.warning(e)
+                self.num_timeouts += 1
+                return False
+
+            self.ping_is_ready = True
+            asyncio.create_task(self._reset_ping_status())
+            return True
+
+    async def _reset_ping_status(self):
+        """Reset ping status to False after timer."""
+        await asyncio.sleep(self.ping_sticky_seconds)
+        self.ping_is_ready = False
 
     async def get_client(self) -> openai.AsyncOpenAI:
         """Wait until backend is ready and return client.
@@ -330,13 +370,12 @@ class SubmititVLLMWorker:
         """
         base_url = await self._get_url()
         server_ready = False
-        while (not server_ready) and (self.num_timeouts < self.max_timeouts):
+        while not server_ready:
             server_ready = await self._test_if_ready()
-            self.num_timeouts += 1
 
-        if not server_ready:
-            self.logger.warning(f"Timeouts: {self.num_timeouts}; restarting")
-            await self._handle_job_interrupted()
+            if self.num_timeouts >= self.max_num_timeouts:
+                self.logger.warning(f"Timeouts: {self.num_timeouts}; restarting")
+                await self._handle_job_interrupted()
 
         self.num_timeouts = 0
         return openai.AsyncOpenAI(
@@ -418,18 +457,23 @@ class SubmititVLLM:
         concurrency_per_worker: int,
         num_replicas: int,
         vllm_cli_prefix: str | list[str] = VLLM_CLI_PREFIX,
+        logger_name_prefix: str = "submitit_vllm",
     ):
-        self.logger = logging.getLogger("SubmititVLLM")
+        self.logger = logging.getLogger(f"{logger_name_prefix}.controller")
+        engine_args.served_model_name = SERVED_MODEL_NAME
 
-        self.workers = [
-            SubmititVLLMWorker(
-                engine_args=engine_args,
-                submitit_executor=submitit_executor,
-                vllm_cli_prefix=vllm_cli_prefix,
-                worker_name=f"submitit_vllm.{_index}",
-            )
-            for _index in range(num_replicas)
-        ]
+        with submitit_executor.batch():
+            self.workers = [
+                SubmititVLLMWorker(
+                    engine_args=engine_args,
+                    submitit_executor=submitit_executor,
+                    vllm_cli_prefix=vllm_cli_prefix,
+                    max_num_timeouts=2 * concurrency_per_worker,
+                    worker_name=f"{logger_name_prefix}.worker_{_index:03d}",
+                )
+                for _index in range(num_replicas)
+            ]
+
         self.worker_semaphores = [
             asyncio.Semaphore(concurrency_per_worker) for _ in range(num_replicas)
         ]
@@ -445,6 +489,15 @@ class SubmititVLLM:
 
         if worker_exceptions:
             raise RuntimeError(*worker_exceptions)
+
+    def __enter__(self):
+        """Use SubmititVLLM in context manager mode for auto-clean-up."""
+        return self
+
+    def __exit__(self, *_):
+        """Clean up."""
+        self.stop()
+        return False
 
     @asynccontextmanager
     async def get_client(self):
@@ -489,6 +542,18 @@ class SubmititVLLM:
             for _task in _tasks:
                 _task.cancel()
 
+    @asynccontextmanager
+    async def get_oai_agents_config(self):
+        """Wrap around get_client."""
+        import agents
+
+        async with self.get_client() as client:
+            yield agents.RunConfig(
+                model=agents.OpenAIChatCompletionsModel(
+                    model=SERVED_MODEL_NAME, openai_client=client
+                )
+            )
+
 
 @backoff.on_exception(backoff.expo, openai.APIConnectionError)
 async def generate_one(submitit_vllm: SubmititVLLM, prompt: str) -> URL:
@@ -496,7 +561,7 @@ async def generate_one(submitit_vllm: SubmititVLLM, prompt: str) -> URL:
     async with submitit_vllm.get_client() as client:
         response = await client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="model",
+            model=SERVED_MODEL_NAME,
             max_completion_tokens=128,
         )
         content = response.choices[0].message.content
@@ -514,35 +579,29 @@ async def main():
     )
     submitit_args = SubmititArgs(partition="a40", qos="m5", gres="gpu:1")
 
-    submitit_executor.update_parameters(
-        **submitit_args.to_submitit_parameters(), use_srun=False
-    )
+    submitit_executor.update_parameters(**submitit_args.to_submitit_parameters())
     engine_args = EngineArgs(
         model="/model-weights/Qwen3-8B",
         max_model_len=1024,
-        served_model_name="model",
-        enforce_eager=True,
+        served_model_name=SERVED_MODEL_NAME,
+        compilation_config=CompilationConfig(
+            cache_dir=(Path(os.environ["HOME"]) / ".cache" / "vllm").as_posix()
+        ),
     )
 
-    submitit_vllm = SubmititVLLM(
+    with SubmititVLLM(
         engine_args=engine_args,
         submitit_executor=submitit_executor,
-        concurrency_per_worker=36,
-        num_replicas=9,
-    )
-    coros = [
-        generate_one(submitit_vllm, f"({_idx}) Introduce yourself.")
-        for _idx in range(2160)
-    ]
+        concurrency_per_worker=128,
+        num_replicas=2,
+    ) as submitit_vllm:
+        coros = [
+            generate_one(submitit_vllm, f"({_idx}) Introduce yourself.")
+            for _idx in range(2160)
+        ]
 
-    try:
         base_urls = await gather_with_progress(coros, "Generating")
-        for _url in base_urls:
-            print(_url)
-
         print(Counter(base_urls))
-    finally:
-        submitit_vllm.stop()
 
 
 if __name__ == "__main__":

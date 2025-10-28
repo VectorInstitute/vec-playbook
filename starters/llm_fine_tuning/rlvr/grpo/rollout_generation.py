@@ -4,12 +4,13 @@ Usage:
 PYTHONPATH="." uv run starters/llm_fine_tuning/rlvr/grpo/rollout_generation.py
 """
 
-import asyncio
 import contextlib
+import logging
 import os
-from typing import Any, AsyncContextManager, Callable, Sequence
+from typing import Any, Callable, Sequence
 
 import agents
+import backoff
 import openai
 import pydantic
 
@@ -17,7 +18,8 @@ from starters.llm_fine_tuning.rlvr.agents_integration.rollout_translation import
     Rollout,
     translate_rollout,
 )
-from starters.llm_fine_tuning.rlvr.async_utils import gather_with_progress, rate_limited
+from starters.llm_fine_tuning.rlvr.async_utils import gather_with_progress
+from starters.llm_fine_tuning.rlvr.submitit_vllm import SubmititVLLM
 
 
 # Optional: Instrument OpenAI Agents SDK with Langfuse via Logfire (OTel)
@@ -95,31 +97,52 @@ eval_agent = agents.Agent(
 )
 
 
+def split_reasoning(response: str) -> tuple[str, str]:
+    """Extract reasoning tokens from response if matched."""
+    reasoning = ""
+    for _token in ("</think>",):
+        if _token in response:
+            reasoning, _, response = response.partition(_token)
+
+    return reasoning, response
+
+
 class RLVREvaluator:
     """Base class for stateful evaluator of verifiable rewards."""
 
     def __init__(
         self,
         evaluator_agent: "agents.Agent",
-        agent_run_config: "agents.RunConfig",
-        semaphore: asyncio.Semaphore,
+        submitit_vllm: SubmititVLLM,
+        split_reasoning: Callable[[str], tuple[str, str]] | None = split_reasoning,
     ):
         self.agent = evaluator_agent
-        self.semaphore = semaphore
-        self.agent_run_config = agent_run_config
+        self.split_reasoning = split_reasoning
+        self.submitit_vllm = submitit_vllm
 
-    async def evaluate(self, item: RLVRDataItem, proposed: str) -> RewardDetails:
+    @backoff.on_exception(backoff.expo, openai.APIConnectionError)
+    async def evaluate(
+        self,
+        item: RLVRDataItem,
+        proposed: str,
+    ) -> _EvalResult:
         """Evaluate one proposed response to one data item."""
         import agents
 
+        if self.split_reasoning:
+            _, proposed = self.split_reasoning(proposed)
+
         query = f"Ground Truth: {item.model_dump_json(indent=2)} \nProposed: {proposed}"
-        async with self.semaphore:
-            response = await agents.Runner.run(
-                self.agent, input=query, run_config=self.agent_run_config
-            )
+        async with self.submitit_vllm.get_oai_agents_config() as run_config:
+            try:
+                response = await agents.Runner.run(
+                    self.agent, input=query, run_config=run_config
+                )
+            except openai.BadRequestError:
+                # Input is too long- judge as False.
+                return _EvalResult(explanation="<openai.BadRequestError>", score=0)
 
-        return response.final_output_as(RewardDetails)
-
+        return response.final_output_as(_EvalResult)
 
 
 class GRPORollout:
@@ -132,60 +155,63 @@ class GRPORollout:
         self,
         agent: "agents.Agent",
         evaluator: RLVREvaluator,
-        get_run_config: Callable[[], AsyncContextManager[openai.AsyncOpenAI]],
     ):
         self.agent = agent
         self.evaluator = evaluator
-        self.get_run_config = get_run_config
+        self.logger = logging.getLogger(__name__)
 
-
-    async def _run_one(self, data_item: RLVRDataItem) -> agents.RunResult:
-        """Run on one data item.
+    @backoff.on_exception(backoff.expo, openai.APIConnectionError)
+    async def _run_one(
+        self, data_item: RLVRDataItem, submitit_vllm: SubmititVLLM
+    ) -> RewardDetails:
+        """Run and evaluate on one data item.
 
         Handles async get_run_config.
         """
-        async with get_run_config() as config
+        # Generate agent rollouts
+        async with submitit_vllm.get_oai_agents_config() as run_config:
+            result = await agents.Runner.run(
+                self.agent, data_item.query, run_config=run_config
+            )
 
+        # Evaluate
+        eval_result = await self.evaluator.evaluate(
+            item=data_item,
+            proposed=str(result.final_output),
+        )
+
+        # Add raw rollout texts to output
+        try:
+            full_rollout = translate_rollout(
+                resp_obj=result.final_output,
+                user_text=data_item.query,
+                agent_obj=self.agent,
+            )
+            return RewardDetails(
+                **eval_result.model_dump(), source_item=data_item, rollout=full_rollout
+            )
+
+        except (
+            TypeError,
+            pydantic.ValidationError,
+            agents.exceptions.ModelBehaviorError,
+        ) as e:
+            self.logger.info(e)
+            return RewardDetails(
+                explanation=f"Exception: {e}",
+                score=0,
+                source_item=data_item,
+                rollout=full_rollout,
+            )
 
     async def generate(
         self,
         data: Sequence[RLVRDataItem],
-    ) -> list[RewardDetails]:
+        submitit_vllm: SubmititVLLM,
+    ) -> Sequence[RewardDetails]:
         """Generate RLVR reward details on given data and policy.
 
         Specify LLM client and model name in agent_run_config.
         """
-        import agents
-
-        # Generate agent rollouts
-        rollout_coros = [
-            agents.Runner.run(
-                self.agent, _item.query, run_config=agent_run_config
-            )
-            for _item in data
-        ]
-
-        outputs = await gather_with_progress(rollout_coros, description="Rollout ...")
-        text_responses = [str(_result.final_output) for _result in outputs]
-
-        # Translate Agent SDK rollouts to Chat Completion format
-        full_rollouts = [
-            translate_rollout(
-                resp_obj=_output, user_text=_item.query, agent_obj=self.agent
-            )
-            for _item, _output in zip(data, outputs)
-        ]
-
-        # Obtain verifiable reward scores
-        eval_coros = [
-            self.evaluator.evaluate(item=_item, proposed=_response_text)
-            for _item, _response_text in zip(data, text_responses)
-        ]
-        eval_results = await gather_with_progress(
-            eval_coros, description="Evaluate ..."
-        )
-
-        return [
-            RewardDetails(**_eval.model_dump(), source_item=_item, rollout=_rollout)
-            for _item, _eval, _rollout in zip(data, eval_results, full_rollouts)
-        ]
+        coros = [self._run_one(_item, submitit_vllm) for _item in data]
+        return await gather_with_progress(coros, description="Rollout ...")

@@ -8,7 +8,11 @@ from torch.nn.functional import log_softmax
 from torch.optim import AdamW
 from transformers import PreTrainedModel
 
-from starters.llm_fine_tuning.rlvr.grpo.data_types import BatchForGRPOTorch, GRPOBatcher
+from starters.llm_fine_tuning.rlvr.grpo.data_types import (
+    BatchForGRPOTorch,
+    GRPOBatcher,
+    GRPOMetrics,
+)
 
 
 def compute_grpo_loss(
@@ -111,7 +115,7 @@ def optimize_grpo_one_epoch(
     max_grad_norm: float = 1.0,
     use_mixed_precision: bool = True,
     numerical_stability_eps: float = 1e-12,
-) -> PreTrainedModel:
+) -> tuple[PreTrainedModel, GRPOMetrics]:
     """
     Perform one optimization epoch of GRPO on a HuggingFace causal language model.
 
@@ -192,4 +196,4 @@ def optimize_grpo_one_epoch(
             optimizer.zero_grad(set_to_none=True)
             progress.update(step_task_id, advance=1)
 
-    return model
+    return model, GRPOMetrics(loss_metrics=loss_metrics)
