@@ -29,20 +29,16 @@ import asyncio
 import logging
 import os
 import pathlib
-import time
+from shutil import rmtree
 from typing import Literal, Sequence
 
 import agents
 import datasets
-import numpy as np
 import submitit
 import torch
-from rich.progress import track
-from torch.nn.functional import softmax
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    PreTrainedModel,
     PreTrainedTokenizerFast,
 )
 from vllm import EngineArgs
@@ -50,11 +46,8 @@ from vllm.config import CompilationConfig
 
 from starters.llm_fine_tuning.rlvr.grpo.data_types import (
     AdvantageData,
-    BatchForInference,
-    GRPOData,
     GRPOHyperparameters,
     GRPOMetrics,
-    PerTokenProbs,
     RewardDetailTokenized,
 )
 from starters.llm_fine_tuning.rlvr.grpo.grpo import optimize_grpo_one_epoch
@@ -113,120 +106,56 @@ async def get_grpo_advantage(
     )
 
 
-def get_per_token_probs(
-    batch: BatchForInference, model: "PreTrainedModel"
-) -> PerTokenProbs:
-    """Obtain per-token probs for a given batch and a given model.
-
-    Params:
-        batch: Tokenized _Batch (batch, length).
-        model: Pretrained Causal LM.
-
-    Returns
-    -------
-        PerTokenProbs storing dense torch tensors on the model device.
-    """
-    device = model.device
-    input_ids = torch.as_tensor(batch.input_ids, dtype=torch.long, device=device)
-    attention_mask = torch.as_tensor(
-        batch.attention_mask, dtype=torch.long, device=device
-    )
-
-    with torch.inference_mode():
-        output = model(input_ids=input_ids, attention_mask=attention_mask)
-        # logits: (batch, length, vocab) where
-        # (j, k, :) contains distribution for tokens k+1 of batch j.
-        logits = output.logits
-
-        # (batch, length - 1, vocab) skipping last token which has no label.
-        # for all possible vocabs.
-        probabilities_all = softmax(logits, dim=-1)[:, :-1, :]
-
-        # (batch, length - 1, 1) skipping first token which is always given.
-        target_token_ids = input_ids[:, 1:].unsqueeze(-1)
-
-        # (batch, length - 1) for input_ids only.
-        probabilities_selected = torch.gather(
-            probabilities_all, dim=-1, index=target_token_ids
-        ).squeeze(-1)
-
-    return PerTokenProbs(
-        attention_mask=attention_mask[: batch.num_valid],
-        full=probabilities_all.detach()[: batch.num_valid],
-        selected=probabilities_selected.detach()[: batch.num_valid],
-    )
-
-
 def grpo_optimization_step(
     advantage_data: AdvantageData,
     current_policy_path: pathlib.Path,
     kl_ref_path: pathlib.Path,
     checkpoint_output_path: pathlib.Path,
     hyperparameters: GRPOHyperparameters,
+    optimizer_path: pathlib.Path,
 ) -> GRPOMetrics:
     """Run one GRPO optimization step given advantages."""
-    tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(
-        current_policy_path
-    )
-
     device = torch.device("cuda:0")
 
-    logger.info("Loading kl_ref weights")
+    logger.info(f"Loading kl_ref weights to CUDA: {kl_ref_path}")
     kl_ref_model = AutoModelForCausalLM.from_pretrained(kl_ref_path)
-    logger.info("Loading kl_ref weights to CUDA.")
     kl_ref_model = kl_ref_model.to(device).bfloat16()  # type: ignore[argument]
 
-    per_token_probs_ref_items = [
-        get_per_token_probs(_batch, kl_ref_model)
-        for _batch in track(
-            advantage_data.get_iterator_for_inference(
-                batch_size=hyperparameters.inference_batch_size,
-                pad_to_length=hyperparameters.max_model_len,
-            ),
-            description="Inference: pi_ref",
-        )
-    ]
-    per_token_probs_ref = sum(per_token_probs_ref_items)
-    del kl_ref_model
+    logger.info(f"Loading weights to CUDA {current_policy_path}")
+    policy_model = AutoModelForCausalLM.from_pretrained(current_policy_path)
+    policy_model = policy_model.to(device).bfloat16()  # type: ignore[argument]
 
-    base_model = AutoModelForCausalLM.from_pretrained(current_policy_path)
-    logger.info("Loading weights to CUDA.")
-    base_model = base_model.to(device).bfloat16()  # type: ignore[argument]
-
-    per_token_probs_base = sum(
-        get_per_token_probs(_batch, base_model)
-        for _batch in track(
-            advantage_data.get_iterator_for_inference(
-                batch_size=hyperparameters.inference_batch_size,
-                pad_to_length=hyperparameters.max_model_len,
-            ),
-            description="Inference: pi_old",
-        )
+    optimizer = torch.optim.AdamW(
+        policy_model.parameters(),
+        lr=hyperparameters.learning_rate,
+        betas=hyperparameters.adam_betas,
+        weight_decay=hyperparameters.adam_weight_decay,
     )
+    if optimizer_path.exists():
+        logger.info(f"Loading optimizer state: {optimizer_path}")
+        optimizer.load_state_dict(torch.load(optimizer_path))
+    else:
+        logger.info(
+            f"Initializing optimizer state since {optimizer_path} does not exist"
+        )
 
-    assert isinstance(per_token_probs_ref, PerTokenProbs)
-    assert isinstance(per_token_probs_base, PerTokenProbs)
-    grpo_data = GRPOData(
-        **advantage_data.model_dump(),
-        ref_probs=per_token_probs_ref,
-        base_probs=per_token_probs_base,
-    )
-
-    base_model, metrics = optimize_grpo_one_epoch(
-        batcher=grpo_data.get_iterator_for_training(
-            pad_to_length=hyperparameters.max_model_len,
+    policy_model, optimizer, metrics = optimize_grpo_one_epoch(
+        batcher=advantage_data.get_iterator_for_training(
             batch_size=hyperparameters.train_batch_size,
+            pad_to_length=hyperparameters.max_model_len,
         ),
-        model=base_model,
+        model_pi_ref=kl_ref_model,
+        model=policy_model,
+        optimizer=optimizer,
         gradient_accumulation_steps=1,
     )
-    base_model.save_pretrained(checkpoint_output_path)
-    tokenizer.save_pretrained(checkpoint_output_path)
+    logger.info(f"Writing model to: {checkpoint_output_path}")
+    policy_model.save_pretrained(checkpoint_output_path)
 
-    return GRPOMetrics(
-        advantage=np.mean(advantage_data._group_rewards()).item(),
-        **metrics.model_dump(),
-    )
+    logger.info(f"Writing optimizer to: {optimizer_path}")
+    torch.save(optimizer.state_dict(), optimizer_path)
+
+    return metrics
 
 
 parser = argparse.ArgumentParser()
@@ -235,6 +164,9 @@ parser.add_argument("--evaluator_model_replicas", type=int, default=2)
 parser.add_argument("--evaluator_model_concurrency", type=int, default=32)
 parser.add_argument("--base_model", required=True)
 parser.add_argument("--checkpoint_folder", required=True)
+parser.add_argument(
+    "--optimizer_folder", help="Use checkpoint_folder/optimizer_state if not specified"
+)
 parser.add_argument(
     "--keep_all_checkpoints",
     action="store_true",
@@ -269,11 +201,15 @@ parser.add_argument(
 parser.add_argument(
     "--vllm_concurrency", type=int, default=36, help="per-worker concurrency"
 )
+parser.add_argument(
+    "--logging_level", type=int, default=36, help="per-worker concurrency"
+)
 
 
 policy_agent = agents.Agent(
     "Math Problem Solver", instructions="Solve the math problem."
 )
+logger = logging.getLogger(__name__)
 
 LOAD_FROM_CACHE = True
 
@@ -308,11 +244,6 @@ if __name__ == "__main__":
     }
     print({k: len(v) for k, v in dataset.items()})
 
-    # start using base model as kl. Update this after each step.
-    checkpoint_folder = pathlib.Path(args.checkpoint_folder)
-    current_policy_path = pathlib.Path(args.base_model)
-    kl_ref_path = current_policy_path
-    tokenizer = AutoTokenizer.from_pretrained(current_policy_path)
     submitit_executor = submitit.SlurmExecutor(
         folder=args.submitit_log_dir, python=args.vllm_uv_prefix
     )
@@ -323,14 +254,29 @@ if __name__ == "__main__":
     )
     submitit_executor.update_parameters(**submitit_args.to_submitit_parameters())
 
+    # Initial: base model for kl. Update this to one step behind after each step.
+    checkpoint_folder = pathlib.Path(args.checkpoint_folder)
+    optimizer_folder = (
+        pathlib.Path(args.optimizer_folder)
+        if args.optimizer_folder
+        else checkpoint_folder / "optimizer_state"
+    )
+    base_model_path = pathlib.Path(args.base_model)
+    tokenizer = AutoTokenizer.from_pretrained(base_model_path)
+
+    # The following are updated after each update.
+    current_policy_path = base_model_path
+    kl_ref_path = current_policy_path
+
     for _step_index in range(args.num_steps):
         updated_checkpoint_path = checkpoint_folder / f"step_{_step_index}"
+        logger.info(f"updated_checkpoint_path: {updated_checkpoint_path}")
         os.makedirs(updated_checkpoint_path, exist_ok=True)
 
         if LOAD_FROM_CACHE:
             advantage_data = {}
             for _split in ("test", "train"):
-                _path = checkpoint_folder / f"data_{_step_index}_{_split}.json"
+                _path = checkpoint_folder / f"data_{0}_{_split}.json"
                 if _path.exists():
                     with open(_path, "r") as data_file:
                         advantage_data[_split] = AdvantageData.model_validate_json(
@@ -380,23 +326,27 @@ if __name__ == "__main__":
                     for _split in ("train", "test")
                 }
 
-        for _split, _data in advantage_data.items():
-            _path = checkpoint_folder / f"data_{_step_index}_{_split}.json"
-            with open(_path, "w") as data_file:
-                data_file.write(_data.model_dump_json())
+            for _split, _data in advantage_data.items():
+                _path = checkpoint_folder / f"data_{_step_index}_{_split}.json"
+                with open(_path, "w") as data_file:
+                    data_file.write(_data.model_dump_json())
 
+        logger.info(f"kl_ref_path: {kl_ref_path}")
         metrics = grpo_optimization_step(
             advantage_data=advantage_data["train"],
             current_policy_path=current_policy_path,
             kl_ref_path=kl_ref_path,
             checkpoint_output_path=updated_checkpoint_path,
+            optimizer_path=optimizer_folder,
             hyperparameters=hyperparameters,
         )
+        logger.info(metrics)
         with open(checkpoint_folder / f"metrics_{_step_index}", "w") as log_file:
             log_file.write(metrics.model_dump_json())
 
-        if (not args.keep_all_checkpoints) and (_step_index > 0):
-            os.rmdir(kl_ref_path)
+        if (not args.keep_all_checkpoints) and (kl_ref_path != base_model_path):
+            rmtree(kl_ref_path)
+            logger.info(f"Deleting: {kl_ref_path}")
 
         kl_ref_path = current_policy_path
         current_policy_path = updated_checkpoint_path

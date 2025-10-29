@@ -2,8 +2,8 @@
 
 from typing import Annotated, Generic, Iterator, Type, TypeVar
 
-import numpy as np
 import pydantic
+import torch
 from pydantic.json_schema import SkipJsonSchema
 
 from starters.llm_fine_tuning.rlvr.data_collation.data_types import TypedBatch
@@ -31,7 +31,7 @@ class TypedBatcher(Generic[T]):
 
     def __init__(
         self,
-        field_data: dict[str, list[list]], # TODO: allow for numpy/torch tensor input
+        field_data: dict[str, list[list] | torch.Tensor],
         batch_model: Type[T],
         field_configs: dict[str, FieldConfig],
         batch_size: int,
@@ -49,9 +49,7 @@ class TypedBatcher(Generic[T]):
         assert len(set(seq_lens.values())) == 1, f"Inconsistent seq count: {seq_lens}"
 
         # Check for additional dimensions.
-        token_data_shapes = {
-            k: np.asarray(v[0][0]).shape for k, v in field_data.items()
-        }
+        token_data_shapes = {k: _infer_token_shape(v) for k, v in field_data.items()}
         extra_dimensions = {
             k: _cfg.extra_dimensions for k, _cfg in field_configs.items()
         }
@@ -72,17 +70,27 @@ class TypedBatcher(Generic[T]):
 
     def __iter__(self) -> Iterator[T]:
         """Yield strongly-typed batches."""
-        # Initialize batch arrays
-        batch_arrays = {
-            name: np.full(
-                # place extra dimensions after the token dimension.
+        field_devices = {
+            name: _infer_device(self.field_data[name]) for name in self.fields
+        }
+
+        # Initialize batch tensors on a per-field device
+        batch_arrays = {}
+        for name, cfg in self.fields.items():
+            torch_dtype = _torch_dtype(cfg.dtype)
+            batch_arrays[name] = torch.full(
                 (self.batch_size, self.pad_to_length, *cfg.extra_dimensions),
                 cfg.padding_value,
-                dtype=cfg.dtype,
+                dtype=torch_dtype,
+                device=field_devices[name],
             )
-            for name, cfg in self.fields.items()
-        }
-        attention_mask = np.zeros((self.batch_size, self.pad_to_length), dtype=bool)
+
+        mask_device = field_devices.get(
+            "input_ids", next(iter(field_devices.values()), torch.device("cpu"))
+        )
+        attention_mask = torch.zeros(
+            (self.batch_size, self.pad_to_length), dtype=torch.bool, device=mask_device
+        )
 
         pos_in_batch = 0
         num_sequences = len(next(iter(self.field_data.values())))
@@ -90,30 +98,99 @@ class TypedBatcher(Generic[T]):
         for i in range(num_sequences):
             # Copy data for all fields
             for name, arrays in batch_arrays.items():
+                torch_dtype = arrays.dtype
+                seq_source = self.field_data[name]
+                seq = seq_source[i]
                 # actual sequence length, capped at pad_to_length
-                seq_len = min(len(self.field_data[name][i]), self.pad_to_length)
-                arrays[pos_in_batch, :seq_len] = self.field_data[name][i][:seq_len]
+                seq_len = min(len(seq), self.pad_to_length)
+                seq_tensor = _coerce_to_tensor(
+                    seq, dtype=torch_dtype, device=arrays.device
+                )
+                arrays[pos_in_batch, :seq_len] = seq_tensor[:seq_len]
                 attention_mask[pos_in_batch, :seq_len] = True
 
             pos_in_batch += 1
 
             if pos_in_batch == self.batch_size:
                 yield self.batch_model(
-                    **{k: v.copy() for k, v in batch_arrays.items()},
-                    attention_mask=attention_mask.copy(),
+                    **{k: v.clone() for k, v in batch_arrays.items()},
+                    attention_mask=attention_mask.clone(),
                     num_valid=pos_in_batch,
                 )
 
                 # Reset batch arrays
-                attention_mask.fill(False)
+                attention_mask.fill_(False)
                 for k, array in batch_arrays.items():
-                    array.fill(self.fields[k].padding_value)
+                    array.fill_(self.fields[k].padding_value)
 
                 pos_in_batch = 0
 
         if pos_in_batch > 0:
             yield self.batch_model(
-                **{k: v.copy() for k, v in batch_arrays.items()},
-                attention_mask=attention_mask.copy(),
+                **{k: v.clone() for k, v in batch_arrays.items()},
+                attention_mask=attention_mask.clone(),
                 num_valid=pos_in_batch,
             )
+
+
+def _torch_dtype(python_dtype: type | torch.dtype) -> torch.dtype:
+    if isinstance(python_dtype, torch.dtype):
+        return python_dtype
+
+    mapping: dict[type, torch.dtype] = {
+        bool: torch.bool,
+        int: torch.long,
+        float: torch.float32,
+    }
+
+    if python_dtype in mapping:
+        return mapping[python_dtype]
+
+    msg = f"Unsupported dtype for torch conversion: {python_dtype}"
+    raise TypeError(msg)
+
+
+def _infer_device(field_value: object) -> torch.device:
+    if isinstance(field_value, torch.Tensor):
+        return field_value.device
+
+    if isinstance(field_value, (list, tuple)) and field_value:
+        first = field_value[0]
+        if isinstance(first, torch.Tensor):
+            return first.device
+
+    return torch.device("cpu")
+
+
+def _infer_token_shape(field_value: object) -> tuple[int, ...]:
+    if isinstance(field_value, torch.Tensor):
+        return tuple(field_value.shape[2:])
+
+    if isinstance(field_value, (list, tuple)) and field_value:
+        first_sequence = field_value[0]
+        if isinstance(first_sequence, torch.Tensor):
+            return tuple(first_sequence.shape[1:])
+
+        if isinstance(first_sequence, (list, tuple)) and first_sequence:
+            first_token = first_sequence[0]
+            if isinstance(first_token, torch.Tensor):
+                return tuple(first_token.shape)
+
+            if hasattr(first_token, "__len__") and not isinstance(
+                first_token, (str, bytes)
+            ):
+                try:
+                    return (len(first_token),)
+                except TypeError:
+                    return ()
+
+    return ()
+
+
+def _coerce_to_tensor(
+    sequence: object, *, dtype: torch.dtype, device: torch.device
+) -> torch.Tensor:
+    if isinstance(sequence, torch.Tensor):
+        return sequence.to(device=device, dtype=dtype)
+
+    return torch.tensor(sequence, dtype=dtype, device=device)

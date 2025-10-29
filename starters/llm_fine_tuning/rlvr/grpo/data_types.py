@@ -158,6 +158,14 @@ class PerTokenProbs(pydantic.BaseModel):
             ),
         )
 
+    def to(self, device: torch.device) -> "PerTokenProbs":
+        """Return copy where tensors are on the specified device."""
+        return PerTokenProbs(
+            full=self.full.to(device),
+            selected=self.selected.to(device),
+            attention_mask=self.attention_mask.to(device),
+        )
+
     def __radd__(self, other: object) -> "PerTokenProbs":
         """Support sum(..., other=0)."""
         if isinstance(other, int) and other == 0:
@@ -173,41 +181,16 @@ class BatchForInference(TypedBatch):
     """Typed batch for getting probs."""
 
     # (batch, input_tokens)
-    input_ids: Annotated[np.ndarray, SkipJsonSchema[None]]
+    input_ids: Annotated[torch.Tensor, SkipJsonSchema[None]]
 
 
 class BatchForGRPO(TypedBatch):
     """Typed batch for GRPO training."""
 
     # (batch, input_tokens)
-    input_ids: Annotated[np.ndarray, SkipJsonSchema[None]]
-    loss_masks: Annotated[np.ndarray, SkipJsonSchema[None]]
-    per_token_advantage: Annotated[np.ndarray, SkipJsonSchema[None]]
-
-    # (batch, input_tokens - 1, vocab)
-    pi_selected_ref: Annotated[np.ndarray, SkipJsonSchema[None]]
-    pi_selected_base: Annotated[np.ndarray, SkipJsonSchema[None]]
-
-
-class BatchForGRPOTorch(pydantic.BaseModel):
-    """Typed batch for GRPO training, but in Torch format."""
-
-    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
-
-    num_valid: int
-    attention_mask: Annotated["torch.Tensor", SkipJsonSchema[None]]
-
-    # (batch, input_tokens) for all of the following
-    # int/long
-    input_ids: Annotated["torch.Tensor", SkipJsonSchema[None]]
-
-    # bool
-    loss_masks: Annotated["torch.Tensor", SkipJsonSchema[None]]
-
-    # float
-    per_token_advantage: Annotated["torch.Tensor", SkipJsonSchema[None]]
-    pi_selected_ref: Annotated["torch.Tensor", SkipJsonSchema[None]]
-    pi_selected_base: Annotated["torch.Tensor", SkipJsonSchema[None]]
+    input_ids: Annotated[torch.Tensor, SkipJsonSchema[None]]
+    loss_masks: Annotated[torch.Tensor, SkipJsonSchema[None]]
+    per_token_advantage: Annotated[torch.Tensor, SkipJsonSchema[None]]
 
 
 class AdvantageData(pydantic.BaseModel):
@@ -246,34 +229,10 @@ class AdvantageData(pydantic.BaseModel):
 
         return AdvantageData(advantage_details=advantage_details)
 
-    def get_iterator_for_inference(
-        self, batch_size: int, pad_to_length: int
-    ) -> TypedBatcher[BatchForInference]:
-        """Obtain batched iterator for inference."""
-        return TypedBatcher(
-            field_data={
-                "input_ids": [
-                    _advantage.input_ids for _advantage in self.advantage_details
-                ]
-            },
-            batch_model=BatchForInference,
-            field_configs={"input_ids": FieldConfig(padding_value=0, dtype=int)},
-            batch_size=batch_size,
-            pad_to_length=pad_to_length,
-        )
-
-
-class GRPOData(AdvantageData):
-    """Advantage data, plus probabilities from ref policy and optionally base policy."""
-
-    ref_probs: PerTokenProbs
-    base_probs: PerTokenProbs
-
     def get_iterator_for_training(
         self, batch_size: int, pad_to_length: int
     ) -> TypedBatcher[BatchForGRPO]:
         """Obtain batched iterator for training."""
-        probability_selected_field = FieldConfig(padding_value=0, dtype=float)
         return TypedBatcher(
             field_data={
                 "input_ids": [
@@ -285,16 +244,12 @@ class GRPOData(AdvantageData):
                 "per_token_advantage": [
                     _advantage.advantages for _advantage in self.advantage_details
                 ],
-                "pi_selected_ref": self.ref_probs.selected.detach().cpu().tolist(),
-                "pi_selected_base": self.base_probs.selected.detach().cpu().tolist(),
             },
             batch_model=BatchForGRPO,
             field_configs={
                 "input_ids": FieldConfig(padding_value=0, dtype=int),
                 "loss_masks": FieldConfig(padding_value=False, dtype=bool),
                 "per_token_advantage": FieldConfig(padding_value=0, dtype=float),
-                "pi_selected_ref": probability_selected_field,
-                "pi_selected_base": probability_selected_field,
             },
             batch_size=batch_size,
             pad_to_length=pad_to_length,
@@ -308,7 +263,7 @@ class GRPOMetrics(pydantic.BaseModel):
     """Metrics for GRPO."""
 
     advantage: float | None = None
-    loss_metrics: list[float] | None = None
+    avg_loss: float | None = None
     grad_norm: float | None = None
 
 
@@ -324,3 +279,7 @@ class GRPOHyperparameters(pydantic.BaseModel):
 
     # for forward pass only, and not for vLLM rollout.
     inference_batch_size: int
+
+    learning_rate: float = 1e-5
+    adam_betas: tuple[float, float] = (0.9, 0.999)
+    adam_weight_decay: float = 0.0
