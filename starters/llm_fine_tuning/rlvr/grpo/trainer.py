@@ -205,8 +205,14 @@ parser.add_argument(
 parser.add_argument(
     "--vllm_concurrency", type=int, default=36, help="per-worker concurrency"
 )
+parser.add_argument("--subsample_train", type=int, default=-1)
+parser.add_argument("--subsample_test", type=int, default=-1)
 parser.add_argument(
-    "--logging_level", type=int, default=36, help="per-worker concurrency"
+    "--logging_level",
+    default=logging.INFO,
+    type=int,
+    help="Logging level. "
+    "Int, 10 for DEBUG, 20 for INFO and above, 30 for WARNING only)",
 )
 
 
@@ -220,7 +226,7 @@ LOAD_FROM_CACHE = False
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=args.logging_level)
 
     hyperparameters = GRPOHyperparameters(
         train_batch_size=args.bsz_train,
@@ -244,8 +250,8 @@ if __name__ == "__main__":
 
     dataset: dict[Literal["train", "test"], Sequence[RLVRDataItem]]
     dataset = {
-        "train": dataset_full["train"][:32],
-        "test": dataset_full["test"][:32],
+        "train": dataset_full["train"][: args.subsample_train],
+        "test": dataset_full["test"][: args.subsample_test],
     }
     print({k: len(v) for k, v in dataset.items()})
 
