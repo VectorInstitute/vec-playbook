@@ -27,7 +27,6 @@ dependencies = [
     "pydantic>=2.11.7",
     "rich>=14.1.0",
     "openai-agents>=0.2.11",
-    "vec-inf==0.6.1",
     "basedpyright>=1.31.4",
     "langfuse>=3.3.4",
     "nest-asyncio>=1.6.0",
@@ -68,6 +67,3 @@ convention = "numpy"
 
 [tool.ruff.lint.pycodestyle]
 max-doc-length = 88
-
-[tool.uv.sources]
-vec-inf = { path = "../vector-inference-20250912" }
