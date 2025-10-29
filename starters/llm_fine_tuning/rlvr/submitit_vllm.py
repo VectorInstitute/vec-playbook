@@ -116,8 +116,8 @@ def get_vllm_cli_args(
     }
 
     # Add only non-default values to cli.
-    # SERVED_MODEL_NAME flag must be specified as a position arg.
-    output = [*vllm_cli_prefix, engine_args_patch.pop((SERVED_MODEL_NAME,))]
+    # "model" flag must be specified as a position arg.
+    output = [*vllm_cli_prefix, engine_args_patch.pop(("model",))]
     for k, v in engine_args_patch.items():
         if isinstance(v, bool):
             if v:
@@ -460,7 +460,18 @@ class SubmititVLLM:
         logger_name_prefix: str = "submitit_vllm",
     ):
         self.logger = logging.getLogger(f"{logger_name_prefix}.controller")
-        engine_args.served_model_name = SERVED_MODEL_NAME
+
+        if engine_args.served_model_name and (
+            engine_args.served_model_name != engine_args.model
+        ):
+            self.logger.warning(
+                "engine_args.served_model_name != engine_args.model. "
+                "Overriding `served_model_name` with `model`"
+            )
+
+        # Use model_name as served_model_name
+        self.served_model_name = engine_args.model
+        engine_args.served_model_name = self.served_model_name
 
         with submitit_executor.batch():
             self.workers = [
@@ -550,7 +561,7 @@ class SubmititVLLM:
         async with self.get_client() as client:
             yield agents.RunConfig(
                 model=agents.OpenAIChatCompletionsModel(
-                    model=SERVED_MODEL_NAME, openai_client=client
+                    model=self.served_model_name, openai_client=client
                 )
             )
 
@@ -561,7 +572,7 @@ async def generate_one(submitit_vllm: SubmititVLLM, prompt: str) -> URL:
     async with submitit_vllm.get_client() as client:
         response = await client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model=SERVED_MODEL_NAME,
+            model=submitit_vllm.served_model_name,
             max_completion_tokens=128,
         )
         content = response.choices[0].message.content

@@ -87,8 +87,9 @@ class RewardDetailTokenized(pydantic.BaseModel):
             formatted,
             add_special_tokens=add_special_tokens,
             return_offsets_mapping=True,  # requires FastTokenizer
-            truncation=False,
-            pad_to=pad_to,
+            truncation=True,
+            padding="max_length",
+            max_length=pad_to,
         )
         input_ids: list[int] = enc["input_ids"]
         offsets: list[tuple[int, int]] = enc["offset_mapping"]
@@ -254,6 +255,15 @@ class AdvantageData(pydantic.BaseModel):
             batch_size=batch_size,
             pad_to_length=pad_to_length,
         )
+
+    @property
+    def avg_reward(self) -> float | None:
+        """Return average reward of rollouts in advantage_details."""
+        rewards = [_advantage.reward for _advantage in self.advantage_details]
+        if len(rewards) > 0:
+            return sum(rewards) / len(rewards)
+
+        return None
 
 
 GRPOBatcher = TypedBatcher[BatchForGRPO]

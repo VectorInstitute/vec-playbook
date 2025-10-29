@@ -9,10 +9,10 @@ Usage:
 
 PYTHONPATH="." \
 uv run starters/llm_fine_tuning/rlvr/grpo/trainer.py \
---tokenizer /model-weights/Qwen3-0.6B \
+--tokenizer /model-weights/Qwen2.5-1.5B-Instruct \
 --evaluator_model /model-weights/Qwen3-8B \
---base_model /model-weights/Qwen3-0.6B \
---checkpoint_folder $SCRATCH/checkpoints/20251027-GRPO-Qwen3-0.6B \
+--base_model /model-weights/Qwen2.5-1.5B-Instruct \
+--checkpoint_folder $SCRATCH/checkpoints/20251027-GRPO-Qwen2.5-1.5B-Instruct \
 --max_model_len 2048 \
 --bsz_train 2 \
 --bsz_inference 2 \
@@ -20,8 +20,10 @@ uv run starters/llm_fine_tuning/rlvr/grpo/trainer.py \
 --vllm_uv_prefix "./run_in_container.sh uv run python" \
 --vllm_partition a40 \
 --vllm_qos m5 \
---vllm_num_replicas 16 \
---vllm_concurrency 128
+--vllm_num_replicas 1 \
+--vllm_concurrency 128 \
+--evaluator_model_replicas 1 \
+--evaluator_model_concurrency 32
 """
 
 import argparse
@@ -149,6 +151,7 @@ def grpo_optimization_step(
         optimizer=optimizer,
         gradient_accumulation_steps=1,
     )
+    logger.info(f"metrics: {metrics.model_dump_json(indent=2)}")
     logger.info(f"Writing model to: {checkpoint_output_path}")
     policy_model.save_pretrained(checkpoint_output_path)
 
@@ -162,10 +165,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--evaluator_model", default="/model-weights/Qwen3-8B")
 parser.add_argument("--evaluator_model_replicas", type=int, default=2)
 parser.add_argument("--evaluator_model_concurrency", type=int, default=32)
+parser.add_argument("--evaluator_max_model_len", type=int, default=2048)
 parser.add_argument("--base_model", required=True)
 parser.add_argument("--checkpoint_folder", required=True)
 parser.add_argument(
-    "--optimizer_folder", help="Use checkpoint_folder/optimizer_state if not specified"
+    "--optimizer_path", help="Use checkpoint_folder/optimizer_state if not specified"
 )
 parser.add_argument(
     "--keep_all_checkpoints",
@@ -211,7 +215,8 @@ policy_agent = agents.Agent(
 )
 logger = logging.getLogger(__name__)
 
-LOAD_FROM_CACHE = True
+# TODO: delete after validating backprop logic.
+LOAD_FROM_CACHE = False
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -256,11 +261,13 @@ if __name__ == "__main__":
 
     # Initial: base model for kl. Update this to one step behind after each step.
     checkpoint_folder = pathlib.Path(args.checkpoint_folder)
-    optimizer_folder = (
-        pathlib.Path(args.optimizer_folder)
-        if args.optimizer_folder
+    optimizer_path = (
+        pathlib.Path(args.optimizer_path)
+        if args.optimizer_path
         else checkpoint_folder / "optimizer_state"
     )
+    # TODO: add support for checkpoint-restore
+    rmtree(optimizer_path, ignore_errors=True)
     base_model_path = pathlib.Path(args.base_model)
     tokenizer = AutoTokenizer.from_pretrained(base_model_path)
 
@@ -304,6 +311,7 @@ if __name__ == "__main__":
                         compilation_config=CompilationConfig(
                             cache_dir=f"{args.vllm_cache_dir}/evaluator"
                         ),
+                        max_model_len=args.evaluator_max_model_len,
                     ),
                     submitit_executor=submitit_executor,
                     concurrency_per_worker=args.evaluator_model_concurrency,
@@ -327,6 +335,7 @@ if __name__ == "__main__":
                 }
 
             for _split, _data in advantage_data.items():
+                logger.info(f"{_split} split: avg reward {_data.avg_reward}")
                 _path = checkpoint_folder / f"data_{_step_index}_{_split}.json"
                 with open(_path, "w") as data_file:
                     data_file.write(_data.model_dump_json())
@@ -337,9 +346,11 @@ if __name__ == "__main__":
             current_policy_path=current_policy_path,
             kl_ref_path=kl_ref_path,
             checkpoint_output_path=updated_checkpoint_path,
-            optimizer_path=optimizer_folder,
+            optimizer_path=optimizer_path,
             hyperparameters=hyperparameters,
         )
+        logger.info(f"Writing tokenizer to: {updated_checkpoint_path}")
+        tokenizer.save_pretrained(updated_checkpoint_path)
         logger.info(metrics)
         with open(checkpoint_folder / f"metrics_{_step_index}", "w") as log_file:
             log_file.write(metrics.model_dump_json())

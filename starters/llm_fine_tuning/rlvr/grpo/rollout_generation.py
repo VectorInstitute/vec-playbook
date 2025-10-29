@@ -191,11 +191,7 @@ class GRPORollout:
                 **eval_result.model_dump(), source_item=data_item, rollout=full_rollout
             )
 
-        except (
-            TypeError,
-            pydantic.ValidationError,
-            agents.exceptions.ModelBehaviorError,
-        ) as e:
+        except agents.exceptions.ModelBehaviorError as e:
             self.logger.info(e)
             return RewardDetails(
                 explanation=f"Exception: {e}",
@@ -214,4 +210,4 @@ class GRPORollout:
         Specify LLM client and model name in agent_run_config.
         """
         coros = [self._run_one(_item, submitit_vllm) for _item in data]
-        return await gather_with_progress(coros, description="Rollout ...")
+        return await gather_with_progress(coros, description="Rollout")
