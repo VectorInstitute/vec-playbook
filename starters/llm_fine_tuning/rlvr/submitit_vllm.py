@@ -398,11 +398,6 @@ async def _rate_limited(
         raise e
 
 
-async def indexed(index: int, coro: Coroutine[None, None, T]) -> tuple[int, T]:
-    """Return (index, await coro)."""
-    return index, (await coro)
-
-
 class SubmititVLLM:
     """Handles multiple replicas of submitit vLLM workers."""
 
