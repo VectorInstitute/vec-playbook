@@ -4,11 +4,9 @@ import asyncio
 import dataclasses
 import json
 import logging
-import os
 import re
 import types
 import uuid
-from collections import Counter
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import (
@@ -20,14 +18,11 @@ from typing import (
     TypeVar,
 )
 
-import backoff
 import httpx
 import openai
 import pydantic
 import submitit
-from httpx import URL
 from rich.progress import Progress
-from vllm.config import CompilationConfig
 from vllm.engine.arg_utils import EngineArgs
 
 
@@ -564,57 +559,3 @@ class SubmititVLLM:
                     model=self.served_model_name, openai_client=client
                 )
             )
-
-
-@backoff.on_exception(backoff.expo, openai.APIConnectionError)
-async def generate_one(submitit_vllm: SubmititVLLM, prompt: str) -> URL:
-    """Generate one request."""
-    async with submitit_vllm.get_client() as client:
-        response = await client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=submitit_vllm.served_model_name,
-            max_completion_tokens=128,
-        )
-        content = response.choices[0].message.content
-        assert content is not None
-        return client.base_url
-
-
-async def main():
-    """Demonstrate full workflow."""
-    engine_args = EngineArgs()
-
-    submitit_executor = submitit.SlurmExecutor(
-        folder="/scratch/ssd004/scratch/jacobtian/submitit",
-        python="/h/jacobtian/vec-playbook/run_in_container.sh uv run python",
-    )
-    submitit_args = SubmititArgs(partition="a40", qos="m5", gres="gpu:1")
-
-    submitit_executor.update_parameters(**submitit_args.to_submitit_parameters())
-    engine_args = EngineArgs(
-        model="/model-weights/Qwen3-8B",
-        max_model_len=1024,
-        served_model_name=SERVED_MODEL_NAME,
-        compilation_config=CompilationConfig(
-            cache_dir=(Path(os.environ["HOME"]) / ".cache" / "vllm").as_posix()
-        ),
-    )
-
-    with SubmititVLLM(
-        engine_args=engine_args,
-        submitit_executor=submitit_executor,
-        concurrency_per_worker=128,
-        num_replicas=2,
-    ) as submitit_vllm:
-        coros = [
-            generate_one(submitit_vllm, f"({_idx}) Introduce yourself.")
-            for _idx in range(2160)
-        ]
-
-        base_urls = await gather_with_progress(coros, "Generating")
-        print(Counter(base_urls))
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())

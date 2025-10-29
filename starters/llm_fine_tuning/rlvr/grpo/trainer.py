@@ -280,65 +280,54 @@ if __name__ == "__main__":
         logger.info(f"updated_checkpoint_path: {updated_checkpoint_path}")
         os.makedirs(updated_checkpoint_path, exist_ok=True)
 
-        if LOAD_FROM_CACHE:
-            advantage_data = {}
-            for _split in ("test", "train"):
-                _path = checkpoint_folder / f"data_{0}_{_split}.json"
-                if _path.exists():
-                    with open(_path, "r") as data_file:
-                        advantage_data[_split] = AdvantageData.model_validate_json(
-                            data_file.read()
-                        )
-
-        else:
-            with (
-                SubmititVLLM(
-                    engine_args=EngineArgs(
-                        model=current_policy_path.as_posix(),
-                        compilation_config=CompilationConfig(
-                            cache_dir=f"{args.vllm_cache_dir}/policy"
-                        ),
-                        max_model_len=hyperparameters.max_model_len,
+        with (
+            SubmititVLLM(
+                engine_args=EngineArgs(
+                    model=current_policy_path.as_posix(),
+                    compilation_config=CompilationConfig(
+                        cache_dir=f"{args.vllm_cache_dir}/policy"
                     ),
-                    submitit_executor=submitit_executor,
-                    concurrency_per_worker=args.vllm_concurrency,
-                    num_replicas=args.vllm_num_replicas,
-                    logger_name_prefix="submitit_vllm.policy",
-                ) as policy_vllm,
-                SubmititVLLM(
-                    engine_args=EngineArgs(
-                        model=args.evaluator_model,
-                        compilation_config=CompilationConfig(
-                            cache_dir=f"{args.vllm_cache_dir}/evaluator"
-                        ),
-                        max_model_len=args.evaluator_max_model_len,
+                    max_model_len=hyperparameters.max_model_len,
+                ),
+                submitit_executor=submitit_executor,
+                concurrency_per_worker=args.vllm_concurrency,
+                num_replicas=args.vllm_num_replicas,
+                logger_name_prefix="submitit_vllm.policy",
+            ) as policy_vllm,
+            SubmititVLLM(
+                engine_args=EngineArgs(
+                    model=args.evaluator_model,
+                    compilation_config=CompilationConfig(
+                        cache_dir=f"{args.vllm_cache_dir}/evaluator"
                     ),
-                    submitit_executor=submitit_executor,
-                    concurrency_per_worker=args.evaluator_model_concurrency,
-                    num_replicas=args.evaluator_model_replicas,
-                    logger_name_prefix="submitit_vllm.evaluator",
-                ) as evaluator_vllm,
-            ):
-                # TODO: update rich.progress setup and run the two splits concurrently.
-                advantage_data = {
-                    _split: asyncio.get_event_loop().run_until_complete(
-                        get_grpo_advantage(
-                            policy_agent,
-                            dataset[_split],
-                            policy_vllm=policy_vllm,
-                            evaluator_vllm=evaluator_vllm,
-                            tokenizer=tokenizer,
-                            max_len=args.max_model_len,
-                        )
+                    max_model_len=args.evaluator_max_model_len,
+                ),
+                submitit_executor=submitit_executor,
+                concurrency_per_worker=args.evaluator_model_concurrency,
+                num_replicas=args.evaluator_model_replicas,
+                logger_name_prefix="submitit_vllm.evaluator",
+            ) as evaluator_vllm,
+        ):
+            # TODO: update rich.progress setup and run the two splits concurrently.
+            advantage_data = {
+                _split: asyncio.get_event_loop().run_until_complete(
+                    get_grpo_advantage(
+                        policy_agent,
+                        dataset[_split],
+                        policy_vllm=policy_vllm,
+                        evaluator_vllm=evaluator_vllm,
+                        tokenizer=tokenizer,
+                        max_len=args.max_model_len,
                     )
-                    for _split in ("train", "test")
-                }
+                )
+                for _split in ("train", "test")
+            }
 
-            for _split, _data in advantage_data.items():
-                logger.info(f"{_split} split: avg reward {_data.avg_reward}")
-                _path = checkpoint_folder / f"data_{_step_index}_{_split}.json"
-                with open(_path, "w") as data_file:
-                    data_file.write(_data.model_dump_json())
+        for _split, _data in advantage_data.items():
+            logger.info(f"{_split} split: avg reward {_data.avg_reward}")
+            _path = checkpoint_folder / f"data_{_step_index}_{_split}.json"
+            with open(_path, "w") as data_file:
+                data_file.write(_data.model_dump_json())
 
         logger.info(f"kl_ref_path: {kl_ref_path}")
         metrics = grpo_optimization_step(

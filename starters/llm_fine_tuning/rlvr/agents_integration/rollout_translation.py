@@ -4,13 +4,10 @@ Usage:
 PYTHONPATH="." uv run starters/llm_fine_tuning/rlvr/agents/main.py
 """
 
-import asyncio
 from typing import Any, cast
 
 import agents
-import openai
 import pydantic
-import transformers
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageFunctionToolCallParam,
@@ -261,65 +258,3 @@ def translate_rollout(
         messages=messages_out,
         tools=tools_out,
     )
-
-
-# Integration test
-async def main():
-    """Run async logic."""
-    client = openai.AsyncOpenAI(api_key="EMPTY")
-    run_config = agents.RunConfig(
-        model=agents.OpenAIChatCompletionsModel(model=MODEL_NAME, openai_client=client)
-    )
-    return await agents.Runner.run(
-        weather_agent, input="Weather in Auckland", run_config=run_config
-    )
-
-
-if __name__ == "__main__":
-    from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
-
-    from starters.llm_fine_tuning.rlvr.agents_integration.examples import weather_agent
-
-    MODEL_NAME = "Qwen3-0.6B"
-    MODEL_PATH = f"/model-weights/{MODEL_NAME}"
-
-    agent_response = asyncio.run(main())
-    # Build messages and tools for the tokenizer, including tool outputs
-    user_input = "Weather in Auckland"
-    rollout = translate_rollout(agent_response, user_input, weather_agent)
-
-    # Ensure output is serializable
-    assert isinstance(rollout.model_dump_json(indent=2), str)
-
-    # Verify roles in rollout
-    rollout_roles = [_message["role"] for _message in rollout.messages]
-    print(rollout_roles)
-    print(rollout.model_dump_json(indent=2))
-
-    assert rollout_roles == [
-        "user",  # "input"
-        "assistant",  # assistant invokes tool
-        "tool",  # response from tool
-        "assistant",  # message to user
-    ], rollout_roles
-
-    # Verify compatibility with HF tokenizer
-    tokenizer: "PreTrainedTokenizerFast" = transformers.AutoTokenizer.from_pretrained(
-        MODEL_PATH
-    )
-    formatted = tokenizer.apply_chat_template(
-        cast("list[dict[str, Any]]", rollout.messages),
-        tools=cast(Any, (rollout.tools or None)),
-        tokenize=False,
-        add_generation_prompt=False,
-    )
-    assert isinstance(formatted, str)
-    print(formatted)
-
-    # Verify function call details appear in the tokenizer output
-    # Previously, using `function_call` was ignored by Qwen3 chat template,
-    # so the tool invocation JSON was missing from `formatted`.
-    assert "<tool_call>" in formatted, "Missing <tool_call> block in template output"
-    assert '"name": "get_weather"' in formatted, "Missing function name in tool_call"
-    assert '"arguments":' in formatted, "Missing arguments field in tool_call"
-    assert "Auckland" in formatted, "Missing argument value in tool_call"

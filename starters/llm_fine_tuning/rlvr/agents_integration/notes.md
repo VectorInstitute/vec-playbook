@@ -66,11 +66,6 @@ formatted = tokenizer.apply_chat_template(
 )
 ```
 
-Run the following to see the output:
-
-```bash
-PYTHONPATH="." uv run starters/llm_fine_tuning/rlvr/agents/main.py'
-```
 
 Example output from Qwen3 format:
 
