@@ -54,7 +54,7 @@ Examples:
 
 ## Run Trainer
 
-Refer to the top of [trainer.py](trainer.py) for example usage.
+Refer to the top of [trainer.py](grpo/trainer.py) for example usage.
 
 ## Adapting to your workflow
 
