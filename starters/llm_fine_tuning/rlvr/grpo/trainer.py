@@ -221,9 +221,6 @@ policy_agent = agents.Agent(
 )
 logger = logging.getLogger(__name__)
 
-# TODO: delete after validating backprop logic.
-LOAD_FROM_CACHE = False
-
 if __name__ == "__main__":
     args = parser.parse_args()
     logging.basicConfig(level=args.logging_level)
