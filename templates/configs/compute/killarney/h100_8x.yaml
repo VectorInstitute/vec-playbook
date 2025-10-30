@@ -5,7 +5,7 @@ gpus_per_node: 8
 gres: gpu:${.gpu_type}:${.gpus_per_node}
 tasks_per_node: ${.gpus_per_node}
 cpus_per_task: 6
-mem_gb: 1920
+mem_gb: 1920 # values are binary GiB as expected by Slurm
 work_root: /scratch/${oc.env:USER}
 timeout_min: 60
 slurm:
