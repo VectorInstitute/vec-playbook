@@ -6,7 +6,7 @@ import pydantic
 import torch
 from pydantic.json_schema import SkipJsonSchema
 
-from starters.llm_fine_tuning.rlvr.data_collation.data_types import TypedBatch
+from templates.src.rlvr.data_collation.data_types import TypedBatch
 
 
 T = TypeVar("T", bound=TypedBatch)

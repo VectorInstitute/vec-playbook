@@ -46,21 +46,21 @@ from transformers import (
 from vllm import EngineArgs
 from vllm.config import CompilationConfig
 
-from starters.llm_fine_tuning.rlvr.grpo.data_types import (
+from templates.src.rlvr.grpo.data_types import (
     AdvantageData,
     GRPOHyperparameters,
     GRPOMetrics,
     RewardDetailTokenized,
 )
-from starters.llm_fine_tuning.rlvr.grpo.grpo import optimize_grpo_one_epoch
-from starters.llm_fine_tuning.rlvr.grpo.rollout_generation import (
+from templates.src.rlvr.grpo.grpo import optimize_grpo_one_epoch
+from templates.src.rlvr.grpo.rollout_generation import (
     GRPORollout,
     RewardDetails,
     RLVRDataItem,
     RLVREvaluator,
     eval_agent,
 )
-from starters.llm_fine_tuning.rlvr.submitit_vllm import SubmititArgs, SubmititVLLM
+from templates.src.rlvr.submitit_vllm import SubmititArgs, SubmititVLLM
 
 
 logger = logging.getLogger(__name__)

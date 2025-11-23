@@ -8,12 +8,12 @@ import torch
 from pydantic.json_schema import SkipJsonSchema
 from transformers import PreTrainedTokenizerFast
 
-from starters.llm_fine_tuning.rlvr.data_collation.batch import (
+from templates.src.rlvr.data_collation.batch import (
     FieldConfig,
     TypedBatcher,
 )
-from starters.llm_fine_tuning.rlvr.data_collation.data_types import TypedBatch
-from starters.llm_fine_tuning.rlvr.shared_types import ChatMessage
+from templates.src.rlvr.data_collation.data_types import TypedBatch
+from templates.src.rlvr.shared_types import ChatMessage
 
 
 def _assistant_char_spans(
