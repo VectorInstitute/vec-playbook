@@ -1,4 +1,4 @@
-"""GRPO logic."""
+"""Numerical logic related to GRPO."""
 
 import logging
 import math
@@ -248,3 +248,4 @@ def optimize_grpo_one_epoch(
         raise RuntimeError("No batch was proceed!")
 
     return model, optimizer, GRPOMetrics(avg_loss=sum(loss_metrics) / len(loss_metrics))
+

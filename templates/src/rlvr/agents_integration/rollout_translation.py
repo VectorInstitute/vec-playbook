@@ -221,7 +221,7 @@ def _build_assistant_tool_invocation_message(items: list[object]) -> ChatMessage
 
 
 def translate_rollout(
-    resp_obj: agents.RunResult, user_text: str, agent_obj: agents.AgentBase
+    resp: agents.RunResult, query: str, agent: agents.AgentBase
 ) -> Rollout:
     """Build messages and tools suitable for HF chat templates.
 
@@ -229,14 +229,12 @@ def translate_rollout(
     - Falls back to a simple user/assistant exchange otherwise.
     """
     messages_out: list[ChatMessage] = [
-        cast(
-            ChatMessage, ChatCompletionUserMessageParam(role="user", content=user_text)
-        )
+        cast(ChatMessage, ChatCompletionUserMessageParam(role="user", content=query))
     ]
 
-    tools_out = _introspect_tools(agent_obj)
+    tools_out = _introspect_tools(agent)
 
-    items = _get_items_list(resp_obj)
+    items = _get_items_list(resp)
     if items:
         # Add assistant message that invokes tools (if any)
         assistant_invocation = _build_assistant_tool_invocation_message(items)
@@ -250,7 +248,7 @@ def translate_rollout(
     # Append final assistant response derived from run
     last_asst: ChatCompletionAssistantMessageParam = {
         "role": "assistant",
-        "content": _derive_final_assistant_text(resp_obj),
+        "content": _derive_final_assistant_text(resp),
     }
     messages_out.append(cast(ChatMessage, last_asst))
 

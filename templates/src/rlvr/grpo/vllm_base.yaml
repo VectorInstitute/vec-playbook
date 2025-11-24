@@ -1,0 +1,6 @@
+base_vllm_config:
+    uv_prefix: "${hydra.launcher.python}"
+    cache_dir: "${oc.env:SCRATCH}/.cache/vllm_compiled_graphs/"
+    partition: "a40"
+    qos: "m5"
+    account: "${user.slurm.account}"

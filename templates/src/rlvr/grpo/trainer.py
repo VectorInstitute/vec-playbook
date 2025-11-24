@@ -38,6 +38,7 @@ import agents
 import datasets
 import submitit
 import torch
+from rlvr.grpo.grpo_backend import optimize_grpo_one_epoch
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -46,21 +47,21 @@ from transformers import (
 from vllm import EngineArgs
 from vllm.config import CompilationConfig
 
+from templates.src.rlvr.grpo.config import SubmititArgs
 from templates.src.rlvr.grpo.data_types import (
     AdvantageData,
     GRPOHyperparameters,
     GRPOMetrics,
     RewardDetailTokenized,
 )
-from templates.src.rlvr.grpo.grpo import optimize_grpo_one_epoch
 from templates.src.rlvr.grpo.rollout_generation import (
     GRPORollout,
-    RewardDetails,
+    RewardDetail,
     RLVRDataItem,
     RLVREvaluator,
     eval_agent,
 )
-from templates.src.rlvr.submitit_vllm import SubmititArgs, SubmititVLLM
+from templates.src.rlvr.submitit_vllm import SubmititVLLM
 
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,7 @@ async def roll_out(
     data: Sequence[RLVRDataItem],
     policy_submitit_vllm: SubmititVLLM,
     evaluator_submitit_vllm: SubmititVLLM,
-) -> Sequence[RewardDetails]:
+) -> Sequence[RewardDetail]:
     """Rollout online to get reward details, not yet tokenized."""
     evaluator = RLVREvaluator(eval_agent, submitit_vllm=evaluator_submitit_vllm)
     rollout_generator = GRPORollout(policy_agent, evaluator=evaluator)
@@ -94,7 +95,7 @@ async def get_grpo_advantage(
         [
             RewardDetailTokenized.from_messages(
                 _detail.rollout.messages,
-                reward=_detail.score,
+                reward=_detail.result,
                 tokenizer=tokenizer,
                 pad_to=max_len,
             )
@@ -207,14 +208,6 @@ parser.add_argument(
 )
 parser.add_argument("--subsample_train", type=int, default=-1)
 parser.add_argument("--subsample_test", type=int, default=-1)
-parser.add_argument(
-    "--logging_level",
-    default=logging.INFO,
-    type=int,
-    help="Logging level. "
-    "Int, 10 for DEBUG, 20 for INFO and above, 30 for WARNING only)",
-)
-
 
 policy_agent = agents.Agent(
     "Math Problem Solver", instructions="Solve the math problem."
@@ -223,7 +216,7 @@ logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    logging.basicConfig(level=args.logging_level)
+    logging.basicConfig(level=logging.INFO)
 
     hyperparameters = GRPOHyperparameters(
         train_batch_size=args.bsz_train,

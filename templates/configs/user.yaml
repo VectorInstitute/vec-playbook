@@ -3,3 +3,9 @@ user:
     account: vector
     additional_parameters:
       qos: m2
+      exclude: gpu027,gpu028
+
+# Required for Vaughan, as that cluster runs a dated version of Linux.
+hydra:
+  launcher:
+    python: "templates/configs/compute/vaughan/run_in_container.sh uv run python"

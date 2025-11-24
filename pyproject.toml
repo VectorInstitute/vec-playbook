@@ -14,7 +14,7 @@ authors = [{name = "Farnaz Kohankhaki", email = "farnaz.kohankhaki@vectorinstitu
 requires-python = "==3.12.*"
 dependencies = [
     "hydra-core>=1.3.2",
-    "hydra-submitit-launcher>=1.2.0",
+    'hydra-submitit-launcher @ git+https://github.com/facebookresearch/hydra.git@8018b394532bae4cc78638159a848414072f4c6d#subdirectory=plugins/hydra_submitit_launcher',
     "submitit>=1.5.0",
     "torch>=2.0.0",
     "transformers>=4.36.0",

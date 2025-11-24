@@ -71,30 +71,19 @@ class RLVRDataItem(pydantic.BaseModel):
     metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
 
 
-class _EvalResult(pydantic.BaseModel):
+class EvalResult(pydantic.BaseModel):
     """Evaluation score, including explanation."""
 
     explanation: str
     score: float
 
 
-class RewardDetails(_EvalResult):
+class RewardDetail(pydantic.BaseModel):
     """_EvalResult plus full ChatCompletion/HF-compatible rollout info."""
 
     source_item: RLVRDataItem
     rollout: Rollout
-
-
-EVAL_AGENT_INSTRUCTIONS = """\
-Evaluate if the `proposed` response matches the ground-truth `target`.
-
-Give a score of 0.0 if incorrect and 1.0 if correct.
-"""
-
-# Eval agent must support structured output and use output_type _EvalResult
-eval_agent = agents.Agent(
-    "Evaluator", instructions=EVAL_AGENT_INSTRUCTIONS, output_type=_EvalResult
-)
+    result: EvalResult
 
 
 def split_reasoning(response: str) -> tuple[str, str]:
@@ -113,36 +102,30 @@ class RLVREvaluator:
     def __init__(
         self,
         evaluator_agent: "agents.Agent",
-        submitit_vllm: SubmititVLLM,
         split_reasoning: Callable[[str], tuple[str, str]] | None = split_reasoning,
     ):
         self.agent = evaluator_agent
         self.split_reasoning = split_reasoning
-        self.submitit_vllm = submitit_vllm
 
     @backoff.on_exception(backoff.expo, openai.APIConnectionError)
-    async def evaluate(
+    async def __call__(
         self,
         item: RLVRDataItem,
         proposed: str,
-    ) -> _EvalResult:
+        submitit_vllm: SubmititVLLM,
+    ) -> EvalResult:
         """Evaluate one proposed response to one data item."""
-        import agents
-
         if self.split_reasoning:
             _, proposed = self.split_reasoning(proposed)
 
         query = f"Ground Truth: {item.model_dump_json(indent=2)} \nProposed: {proposed}"
-        async with self.submitit_vllm.get_oai_agents_config() as run_config:
-            try:
-                response = await agents.Runner.run(
-                    self.agent, input=query, run_config=run_config
-                )
-            except openai.BadRequestError:
-                # Input is too long- judge as False.
-                return _EvalResult(explanation="<openai.BadRequestError>", score=0)
+        try:
+            response = await submitit_vllm.run_agent(self.agent, query=query)
+        except openai.BadRequestError:
+            # Input is too long- judge as False.
+            return EvalResult(explanation="<openai.BadRequestError>", score=0)
 
-        return response.final_output_as(_EvalResult)
+        return response.final_output_as(EvalResult)
 
 
 class GRPORollout:
@@ -163,7 +146,7 @@ class GRPORollout:
     @backoff.on_exception(backoff.expo, openai.APIConnectionError)
     async def _run_one(
         self, data_item: RLVRDataItem, submitit_vllm: SubmititVLLM
-    ) -> RewardDetails:
+    ) -> RewardDetail:
         """Run and evaluate on one data item.
 
         Handles async get_run_config.
@@ -175,7 +158,7 @@ class GRPORollout:
             )
 
         # Evaluate
-        eval_result = await self.evaluator.evaluate(
+        eval_result = await self.evaluator(
             item=data_item,
             proposed=str(result.final_output),
         )
@@ -183,19 +166,19 @@ class GRPORollout:
         # Add raw rollout texts to output
         try:
             full_rollout = translate_rollout(
-                resp_obj=result.final_output,
-                user_text=data_item.query,
-                agent_obj=self.agent,
+                resp=result.final_output,
+                query=data_item.query,
+                agent=self.agent,
             )
-            return RewardDetails(
-                **eval_result.model_dump(), source_item=data_item, rollout=full_rollout
+            return RewardDetail(
+                result=eval_result, source_item=data_item, rollout=full_rollout
             )
 
         except agents.exceptions.ModelBehaviorError as e:
             self.logger.info(e)
-            return RewardDetails(
+            return RewardDetail(
                 explanation=f"Exception: {e}",
-                score=0,
+                result=0,
                 source_item=data_item,
                 rollout=full_rollout,
             )
@@ -204,7 +187,7 @@ class GRPORollout:
         self,
         data: Sequence[RLVRDataItem],
         submitit_vllm: SubmititVLLM,
-    ) -> Sequence[RewardDetails]:
+    ) -> Sequence[RewardDetail]:
         """Generate RLVR reward details on given data and policy.
 
         Specify LLM client and model name in agent_run_config.

@@ -9,6 +9,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Coroutine,
@@ -18,34 +19,18 @@ from typing import (
 
 import httpx
 import openai
-import pydantic
 import submitit
 from vllm.engine.arg_utils import EngineArgs
 
+
+if TYPE_CHECKING:
+    import agents
 
 T = TypeVar("T")
 VLLM_CLI_PREFIX = "uv run vllm serve"
 SERVED_MODEL_NAME = "model"
 VLLM_URL_PATTERN = re.compile(r"http:\/\/0\.0\.0\.0[:\.](\d{1,5})", re.DOTALL)
 VLLM_READY_PATTERN = re.compile(r"startup complete", re.DOTALL)
-
-
-class SubmititArgs(pydantic.BaseModel):
-    """Submitit args."""
-
-    job_name: str | None = None
-    partition: str | None = None
-    account: str | None = None
-    qos: str | None = None
-    mem: str | None = "72GB"
-    cpus_per_task: str | None = "16"
-    gres: str | None = "gpu:1"
-    time: str = "1:00:00"
-    use_srun: bool = False
-
-    def to_submitit_parameters(self) -> dict[str, int | str]:
-        """Produce submit-compatible dict consisting of non-None values."""
-        return {k: v for k, v in self.model_dump().items() if v is not None}
 
 
 def _flatten_dict(nested: Mapping[str, Any]) -> dict[tuple[str, ...], Any]:
@@ -505,13 +490,31 @@ class SubmititVLLM:
                 _task.cancel()
 
     @asynccontextmanager
-    async def get_oai_agents_config(self):
+    async def get_oai_agents_config(
+        self, run_config_base: "agents.RunConfig | None" = None
+    ):
         """Wrap around get_client."""
         import agents
+
+        base_config = run_config_base.__dict__ if run_config_base else {}
+        base_config.pop("model", None)
 
         async with self.get_client() as client:
             yield agents.RunConfig(
                 model=agents.OpenAIChatCompletionsModel(
                     model=self.served_model_name, openai_client=client
-                )
+                ),
+                **base_config,
             )
+
+    async def run_agent(
+        self,
+        agent: "agents.Agent",
+        query: str,
+        run_config: "agents.RunConfig | None" = None,
+    ):
+        """Get client and invoke agent."""
+        import agents
+
+        async with self.get_oai_agents_config(run_config) as _config:
+            return await agents.Runner.run(agent, input=query, run_config=_config)
