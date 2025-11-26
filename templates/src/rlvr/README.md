@@ -54,7 +54,15 @@ Examples:
 
 ## Run Trainer
 
-Refer to the top of [trainer.py](grpo/trainer.py) for example usage.
+```bash
+uv run python \
+-m rlvr.grpo.launch \
+--multirun \
+compute=vaughan/a40_1x \
+requeue=off \
++trainer.num_epochs=10 \
++trainer.data.train_split="train\[:100\]"
+```
 
 ## Adapting to your workflow
 
