@@ -2,9 +2,13 @@
 
 import asyncio
 import dataclasses
+import io
 import json
 import logging
+import os
 import re
+import signal
+import subprocess
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,12 +18,15 @@ from typing import (
     Callable,
     Coroutine,
     Mapping,
+    Sequence,
     TypeVar,
 )
 
 import httpx
 import openai
+import pydantic
 import submitit
+import submitit.core.utils
 from vllm.engine.arg_utils import EngineArgs
 
 
@@ -183,13 +190,65 @@ async def async_tail_job_logs(
         await asyncio.gather(*tasks, return_exceptions=False)
 
 
+def _stop_subprocesses(process: subprocess.Popen):
+    """Stop subprocesses.
+
+    Requires start_new_session=True when creating Popen.
+    """
+    _job_pgid = os.getpgid(process.pid)
+    os.killpg(_job_pgid, signal.SIGTERM)
+
+    # required to avoid defunct processes
+    process.terminate()
+    process.wait()
+
+
+class _CommandFunction(submitit.helpers.CommandFunction):
+    """Submitit _CommandFunction, but handles SIGTERM properly for LocalExecutor."""
+
+    def __call__(self, *args: Any, **kwargs: Any) -> str:
+        full_command = (
+            self.command
+            + [str(x) for x in args]
+            + [f"--{x}={y}" for x, y in kwargs.items()]
+        )
+        if self.verbose:
+            print(f'The following command is sent: "{' '.join(full_command)}"')
+
+        with subprocess.Popen(
+            full_command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False,
+            cwd=self.cwd,
+            env=self.env,
+            start_new_session=True,
+        ) as process:
+            stdout_buffer = io.StringIO()
+            stderr_buffer = io.StringIO()
+
+            # Handles SIGTERM
+            signal.signal(signal.SIGTERM, lambda *_: _stop_subprocesses(process))
+
+            try:
+                submitit.core.utils.copy_process_streams(
+                    process, stdout_buffer, stderr_buffer, self.verbose
+                )
+                return stdout_buffer.getvalue().strip()
+
+            # Handles SIGINT
+            except (Exception, KeyboardInterrupt):
+                _stop_subprocesses(process)
+                raise
+
+
 class SubmititVLLMWorker:
     """Watcher for one replica of vLLM launched via submitit."""
 
     def __init__(
         self,
         engine_args: "EngineArgs",
-        submitit_executor: submitit.SlurmExecutor,
+        submitit_executor: submitit.Executor,
         max_num_timeouts: int,
         vllm_cli_prefix: str | list[str] = VLLM_CLI_PREFIX,
         worker_name: str = __name__,
@@ -238,7 +297,8 @@ class SubmititVLLMWorker:
     def _launch_worker(self):
         """Launch vLLM worker and return job handle as well as watcher task."""
         args = get_vllm_cli_args(self.engine_args, vllm_cli_prefix=self.vllm_cli_prefix)
-        submitit_job = self.executor.submit(submitit.helpers.CommandFunction(args))
+        submitit_job = self.executor.submit(_CommandFunction(args))
+        self.logger.debug(f"Launch command: {" ".join(args)}")
         self.logger.info(f"Launched: {submitit_job}")
         self.num_timeouts = 0
 
@@ -257,7 +317,24 @@ class SubmititVLLMWorker:
         if not self.watcher_task.cancel():
             self.watcher_task.result()
 
-        self.submitit_job.cancel()
+        self.logger.info(f"Stopping job {self.submitit_job}")
+        # Clean up local jobs via SIGTERM.
+        # Note the BUG in submitit local executor-
+        # job.cancel creates SIGINT, which isn't forwarded to the job.
+        # Only SIGTERM (sent manually) is forwarded.
+        if (
+            isinstance(self.submitit_job, submitit.LocalJob)
+            and self.submitit_job._process
+        ):
+            _job_pid = int(self.submitit_job.job_id)
+            self.logger.info(f"Sending SIGTERM to local job {_job_pid}")
+            os.kill(_job_pid, signal.SIGTERM)
+            os.waitpid(_job_pid, 0)
+
+        # Clean up SLURM/Remote jobs
+        else:
+            self.submitit_job.cancel(check=True)
+
         self.remote_status_signal.set()
 
     async def _handle_job_interrupted(self):
@@ -265,7 +342,7 @@ class SubmititVLLMWorker:
         self.base_url = None
         self.remote_url_signal.clear()
         self.remote_status_signal.clear()
-        self.submitit_job.cancel()
+        self.submitit_job.cancel(check=True)
 
         # This callback is running within the previous self.watcher_task
         # stop the previous watcher_task only after launching a new one.
@@ -295,7 +372,8 @@ class SubmititVLLMWorker:
         # Note the possible race condition- base_url might appear before or after
         # the "ready" status is seen.
         if url_port_match is not None:
-            _job_host = self.submitit_job.get_info()["NodeList"]
+            # local executor would be missing the "NodeList info."
+            _job_host = self.submitit_job.get_info().get("NodeList", "localhost")
             self.base_url = f"http://{_job_host}:{url_port_match.group(1)}"
             self.remote_url_signal.set()
             self.logger.debug(f"Base URL {self.base_url}")
@@ -383,15 +461,30 @@ async def _rate_limited(
         raise e
 
 
+class ExecutorConfig(pydantic.BaseModel):
+    """Configs for an executor."""
+
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
+    name: str
+    executor: submitit.Executor = pydantic.Field(exclude=True)
+    num_replicas: int
+
+    # max per-worker concurrency
+    concurrency: int
+
+
 class SubmititVLLM:
-    """Handles multiple replicas of submitit vLLM workers."""
+    """Handles multiple replicas of submitit vLLM workers.
+
+    For example, to launch three instances, including one local, set executors
+    to [(submitit.SlurmExecutor(...), 2), (submitit.LocalExecutor(...), 1)]
+    """
 
     def __init__(
         self,
         engine_args: "EngineArgs",
-        submitit_executor: submitit.SlurmExecutor,
-        concurrency_per_worker: int,
-        num_replicas: int,
+        executor_configs: Sequence[ExecutorConfig],
         vllm_cli_prefix: str | list[str] = VLLM_CLI_PREFIX,
         logger_name_prefix: str = "submitit_vllm",
     ):
@@ -409,29 +502,41 @@ class SubmititVLLM:
         self.served_model_name = engine_args.model
         engine_args.served_model_name = self.served_model_name
 
-        with submitit_executor.batch():
-            self.workers = [
-                SubmititVLLMWorker(
-                    engine_args=engine_args,
-                    submitit_executor=submitit_executor,
-                    vllm_cli_prefix=vllm_cli_prefix,
-                    max_num_timeouts=2 * concurrency_per_worker,
-                    worker_name=f"{logger_name_prefix}.worker_{_index:03d}",
-                )
-                for _index in range(num_replicas)
-            ]
+        self.workers: list[SubmititVLLMWorker] = []
+        self.worker_semaphores: list[asyncio.Semaphore] = []
 
-        self.worker_semaphores = [
-            asyncio.Semaphore(concurrency_per_worker) for _ in range(num_replicas)
-        ]
+        for _cfg in executor_configs:
+            with _cfg.executor.batch():
+                _workers = [
+                    SubmititVLLMWorker(
+                        engine_args=engine_args,
+                        submitit_executor=_cfg.executor,
+                        vllm_cli_prefix=vllm_cli_prefix,
+                        max_num_timeouts=2 * _cfg.concurrency,
+                        worker_name=f"{logger_name_prefix}.{_cfg.name}.{_index:03d}",
+                    )
+                    for _index in range(_cfg.num_replicas)
+                ]
+                self.workers.extend(_workers)
+
+            _semaphores = [
+                asyncio.Semaphore(_cfg.concurrency) for _ in range(_cfg.num_replicas)
+            ]
+            self.worker_semaphores.extend(_semaphores)
 
     def stop(self):
         """Spin down workers and raise any worker exceptions."""
         worker_exceptions: list[Exception] = []
+        self.logger.info("Stopping all workers.")
         for worker in self.workers:
             try:
                 worker.stop()
             except Exception as e:
+                # Ignore no-such-process errors
+                # from cleaning up local workers that exits on SIGINT
+                if "No such process" in str(e):
+                    continue
+
                 worker_exceptions.append(e)
 
         if worker_exceptions:

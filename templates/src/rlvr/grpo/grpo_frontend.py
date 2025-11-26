@@ -2,74 +2,20 @@
 
 import logging
 import pathlib
-from typing import Sequence
 
-import agents
 import torch
 from rlvr.grpo.grpo_backend import optimize_grpo_one_epoch
-from transformers import (
-    AutoModelForCausalLM,
-    PreTrainedTokenizerFast,
-)
+from transformers import AutoModelForCausalLM
 
+from templates.src.rlvr.grpo.config import GRPOHyperparameters
 from templates.src.rlvr.grpo.data_types import (
     AdvantageData,
-    GRPOHyperparameters,
     GRPOMetrics,
-    RewardDetailTokenized,
 )
-from templates.src.rlvr.grpo.rollout_generation import (
-    GRPORollout,
-    RewardDetail,
-    RLVRDataItem,
-    RLVREvaluator,
-)
-from templates.src.rlvr.submitit_vllm import SubmititVLLM
 
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
-
-async def roll_out(
-    policy_agent: agents.Agent,
-    data: Sequence[RLVRDataItem],
-    policy_submitit_vllm: SubmititVLLM,
-    evaluator_submitit_vllm: SubmititVLLM,
-) -> Sequence[RewardDetail]:
-    """Rollout online to get reward details, not yet tokenized."""
-    evaluator = RLVREvaluator(eval_agent, submitit_vllm=evaluator_submitit_vllm)
-    rollout_generator = GRPORollout(policy_agent, evaluator=evaluator)
-    return await rollout_generator.generate(
-        data=data, submitit_vllm=policy_submitit_vllm
-    )
-
-
-async def get_grpo_advantage(
-    policy_agent: agents.Agent,
-    data_items: Sequence[RLVRDataItem],
-    policy_vllm: SubmititVLLM,
-    evaluator_vllm: SubmititVLLM,
-    tokenizer: PreTrainedTokenizerFast,
-    max_len: int,
-) -> AdvantageData:
-    """Generate and compute GRPO advantages for a given data split."""
-    return AdvantageData.from_list_of_rewards(
-        [
-            RewardDetailTokenized.from_messages(
-                _detail.rollout.messages,
-                reward=_detail.result,
-                tokenizer=tokenizer,
-                pad_to=max_len,
-            )
-            for _detail in await roll_out(
-                policy_agent=policy_agent,
-                data=data_items,
-                policy_submitit_vllm=policy_vllm,
-                evaluator_submitit_vllm=evaluator_vllm,
-            )
-        ]
-    )
 
 
 def grpo_optimization_step(
@@ -78,7 +24,7 @@ def grpo_optimization_step(
     kl_ref_path: pathlib.Path,
     checkpoint_output_path: pathlib.Path,
     hyperparameters: GRPOHyperparameters,
-    optimizer_path: pathlib.Path,
+    optimizer_path: pathlib.Path | None,
 ) -> GRPOMetrics:
     """Run one GRPO optimization step given advantages."""
     device = torch.device("cuda:0")
@@ -97,17 +43,18 @@ def grpo_optimization_step(
         betas=hyperparameters.adam_betas,
         weight_decay=hyperparameters.adam_weight_decay,
     )
-    if optimizer_path.exists():
+    if optimizer_path and optimizer_path.exists():
         logger.info(f"Loading optimizer state: {optimizer_path}")
         optimizer.load_state_dict(torch.load(optimizer_path))
     else:
         logger.info(
-            f"Initializing optimizer state since {optimizer_path} does not exist"
+            "Re-initializing optimizer state since optimizer_path "
+            "is None or does not exist"
         )
 
     policy_model, optimizer, metrics = optimize_grpo_one_epoch(
         batcher=advantage_data.get_iterator_for_training(
-            batch_size=hyperparameters.train_batch_size,
+            batch_size=hyperparameters.batch_size_backprop,
             pad_to_length=hyperparameters.max_model_len,
         ),
         model_pi_ref=kl_ref_model,
@@ -119,7 +66,10 @@ def grpo_optimization_step(
     logger.info(f"Writing model to: {checkpoint_output_path}")
     policy_model.save_pretrained(checkpoint_output_path)
 
-    logger.info(f"Writing optimizer to: {optimizer_path}")
-    torch.save(optimizer.state_dict(), optimizer_path)
+    if optimizer_path:
+        logger.info(f"Writing optimizer to: {optimizer_path}")
+        torch.save(optimizer.state_dict(), optimizer_path)
+    else:
+        logger.info("Not saving optimizer since optimizer_path is None.")
 
     return metrics

@@ -2,28 +2,31 @@
 
 import asyncio
 import logging
+import pathlib
 import re
-from collections import defaultdict
-from os import makedirs
+from os import environ, makedirs
+from shutil import rmtree
 from typing import Sequence
 
 import agents
 import datasets
+import pydantic
 import submitit
 from transformers import AutoTokenizer
 from vllm import EngineArgs
 from vllm.config import CompilationConfig
 
-from templates.src.rlvr.agents_integration.rollout_translation import (
-    Rollout,
-    translate_rollout,
-)
+from templates.src.rlvr.agents_integration.rollout_translation import translate_rollout
 from templates.src.rlvr.async_utils import gather_with_progress
 from templates.src.rlvr.grpo.config import DataConfig, GRPOConfig
 from templates.src.rlvr.grpo.data_types import AdvantageData, RewardDetailTokenized
-from templates.src.rlvr.grpo.grpo_frontend import RLVRDataItem
-from templates.src.rlvr.grpo.rollout_generation import EvalResult, RLVREvaluator
-from templates.src.rlvr.submitit_vllm import SubmititVLLM
+from templates.src.rlvr.grpo.grpo_frontend import grpo_optimization_step
+from templates.src.rlvr.grpo.rollout_generation import (
+    EvalResult,
+    RLVRDataItem,
+    RLVREvaluator,
+)
+from templates.src.rlvr.submitit_vllm import ExecutorConfig, SubmititVLLM
 
 
 policy_agent = agents.Agent(
@@ -39,6 +42,14 @@ eval_agent = agents.Agent(
     ),
     output_type=EvalResult,
 )
+
+
+class _CheckpointPaths(pydantic.BaseModel):
+    """Checkpoint paths."""
+
+    current: pathlib.Path
+    output: pathlib.Path
+    kl_ref: pathlib.Path
 
 
 def load_data(data_cfg: DataConfig):
@@ -77,47 +88,123 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
         self.cfg = cfg
-        self.submitit_executor = submitit.SlurmExecutor(
-            folder=cfg.submitit_logs_folder, python=cfg.rollout_vllm.submitit_python
-        )
-        self.submitit_executor.update_parameters(
-            **cfg.rollout_vllm.submitit_args.to_submitit_parameters()
-        )
         self.optimizer_path = (
             cfg.optimizer_folder
             if cfg.optimizer_folder
             else cfg.checkpoint_folder / "optimizer_state"
         )
 
+        # Keep history of checkpoints for KL calculations
+        # these are automatically recycled.
+        self.checkpoints: list[pathlib.Path] = []
+
         # Initialize policy and KL ref to base model.
-        self.current_policy_path = cfg.base_model
-        self.kl_ref_path = cfg.base_model
         self.evaluator = RLVREvaluator(eval_agent)
 
-    def generate_rollout(self, data: Sequence[RLVRDataItem]) -> Sequence[Rollout]:
+        # Run one replica locally while running other replicas on SLURM.
+        local_executor = submitit.LocalExecutor(
+            folder=cfg.submitit_logs_folder, python="uv run python"
+        )
+        visible_gpus = list(
+            map(int, environ.get("CUDA_VISIBLE_DEVICES", "0").split(","))
+        )
+        local_executor.update_parameters(
+            visible_gpus=visible_gpus,
+            gpus_per_node=len(visible_gpus),
+            timeout_min=cfg.rollout_vllm.submitit_args.time_in_minutes,
+        )
+        local_executor_config = ExecutorConfig(
+            name="local",
+            executor=local_executor,
+            num_replicas=1,
+            concurrency=cfg.rollout_vllm.concurrency_per_replica,
+        )
+
+        slurm_executor = submitit.SlurmExecutor(
+            folder=cfg.submitit_logs_folder, python=cfg.rollout_vllm.submitit_python
+        )
+        slurm_executor.update_parameters(
+            **cfg.rollout_vllm.submitit_args.to_submitit_parameters()
+        )
+
+        self.rollout_executor_configs = [
+            local_executor_config,
+            ExecutorConfig(
+                name="slurm",
+                executor=slurm_executor,
+                num_replicas=cfg.rollout_vllm.num_replicas,
+                concurrency=cfg.rollout_vllm.concurrency_per_replica,
+            ),
+        ]
+        self.llm_judge_executor_configs = [
+            local_executor_config,
+            ExecutorConfig(
+                name="slurm",
+                executor=slurm_executor,
+                num_replicas=cfg.llm_judge_vllm.num_replicas,
+                concurrency=cfg.llm_judge_vllm.concurrency_per_replica,
+            ),
+        ]
+
+    def get_checkpoint_paths(self, step_index: int) -> _CheckpointPaths:
+        """Return checkpoint paths and recycle previous checkpoints if enabled.
+
+        - At startup, use base_model as base policy and KL ref.
+        - At the next step, use new output as base model, and base model as KL ref.
+        - Subsequently, at the Nth step, use N-1 as base policy and N-2 as KL ref.
+        """
+        new_checkpoint = self.cfg.checkpoint_folder / f"step_{step_index:03d}"
+        self.logger.info(f"Next checkpoint path: {new_checkpoint}")
+        makedirs(new_checkpoint, exist_ok=True)
+
+        checkpoints = [
+            self.cfg.base_model,  # Initial KL
+            self.cfg.base_model,  # Initial base policy
+            *self.checkpoints,
+            new_checkpoint,
+        ]
+
+        *_, _kl_ref, _current, _output = checkpoints
+
+        # Delete all but the two most recent checkpoints (kl, current)
+        if len(self.checkpoints) > 2:
+            *_to_delete, _kl_ref, _current = self.checkpoints
+            for _folder in _to_delete:
+                rmtree(_folder)
+
+        return _CheckpointPaths(current=_current, output=_output, kl_ref=_kl_ref)
+
+    def generate_rollout(
+        self, data: Sequence[RLVRDataItem], model_name: str | pathlib.Path
+    ) -> tuple[Sequence[agents.RunResult], Sequence[str]]:
         """Generate rollouts using policy model/agent."""
+        if isinstance(model_name, pathlib.Path):
+            model_name = model_name.as_posix()
+
         with SubmititVLLM(
+            logger_name_prefix="submitit_vllm.policy",
+            executor_configs=self.rollout_executor_configs,
             engine_args=EngineArgs(
-                model=self.current_policy_path,
+                model=model_name,
                 compilation_config=CompilationConfig(
                     cache_dir=self.cfg.rollout_vllm.cache_dir.as_posix()
                 ),
                 max_model_len=self.cfg.rollout_vllm.max_model_len,
             ),
-            submitit_executor=self.submitit_executor,
-            concurrency_per_worker=self.cfg.rollout_vllm.concurrency_per_replica,
-            num_replicas=self.cfg.rollout_vllm.num_replicas,
-            logger_name_prefix="submitit_vllm.policy",
         ) as policy_vllm:
             coros = [policy_vllm.run_agent(policy_agent, _item.query) for _item in data]
             coro = gather_with_progress(coros, "Rollout...")
             rollouts = asyncio.get_event_loop().run_until_complete(coro)
 
-        return [_result.final_output for _result in rollouts]
+        return rollouts, [_result.final_output for _result in rollouts]
 
-    def score_rollouts(self, data: Sequence[RLVRDataItem], answers: Sequence[str]):
+    def score_rollouts(
+        self, data: Sequence[RLVRDataItem], answers: Sequence[str]
+    ) -> Sequence[EvalResult]:
         """Score a list of answers, using LLM judge."""
         with SubmititVLLM(
+            logger_name_prefix="submitit_vllm.evaluator",
+            executor_configs=self.llm_judge_executor_configs,
             engine_args=EngineArgs(
                 model=self.cfg.llm_judge_vllm.model_name,
                 compilation_config=CompilationConfig(
@@ -125,10 +212,6 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
                 ),
                 max_model_len=self.cfg.llm_judge_vllm.max_model_len,
             ),
-            submitit_executor=self.submitit_executor,
-            concurrency_per_worker=self.cfg.llm_judge_vllm.concurrency_per_replica,
-            num_replicas=self.cfg.llm_judge_vllm.num_replicas,
-            logger_name_prefix="submitit_vllm.evaluator",
         ) as evaluator_vllm:
             coros = [
                 self.evaluator(_item, proposed=_answer, submitit_vllm=evaluator_vllm)
@@ -159,16 +242,37 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
 
     def run_step(self, index: int):
         """Run one GRPO step."""
-        updated_checkpoint_path = self.cfg.checkpoint_folder / f"step_{index}"
-        self.logger.info(f"updated_checkpoint_path: {updated_checkpoint_path}")
-        makedirs(updated_checkpoint_path, exist_ok=True)
+        _paths = self.get_checkpoint_paths(index)
 
-    def __call__(self, cfg: GRPOConfig) -> None:
+        dataset = load_data(self.cfg.data)
+        num_train = len(dataset["train"])
+        data_all = dataset["train"] + dataset["test"]  # process both splits in one pass
+
+        run_results, answers = self.generate_rollout(data_all, _paths.current)
+        evals = self.score_rollouts(data=data_all, answers=answers)
+        advantages_train = self.calculate_advantage(
+            data_all[:num_train], run_results[:num_train], evals=evals[:num_train]
+        )
+        advantages_test = self.calculate_advantage(
+            data_all[num_train:], run_results[num_train:], evals=evals[num_train:]
+        )
+        metrics = grpo_optimization_step(
+            advantages_train,
+            current_policy_path=_paths.current,
+            kl_ref_path=_paths.kl_ref,
+            checkpoint_output_path=_paths.output,
+            optimizer_path=self.cfg.optimizer_folder,
+            hyperparameters=self.cfg.hyperparameters,
+        )
+        return metrics, advantages_test.avg_reward
+
+    def __call__(self, cfg: GRPOConfig):
         """Run full GRPO loop."""
-        dataset = load_data(cfg.data)
-        tokenizer = AutoTokenizer.from_pretrained(cfg.base_model)
+        metrics = []
+        for _epoch in range(cfg.num_epochs):
+            metrics.append(self.run_step(_epoch))
 
-        raise ValueError(cfg.model_dump_json(indent=2))
+        return metrics
 
     def checkpoint(self, *args, **kwargs) -> submitit.helpers.DelayedSubmission:
         """Save state and launch the same callable with the same arguments."""

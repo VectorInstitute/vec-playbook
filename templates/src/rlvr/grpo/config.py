@@ -1,5 +1,6 @@
 """Typing and validator for GRPO config."""
 
+import datetime
 from pathlib import Path
 
 import pydantic
@@ -21,6 +22,21 @@ class SubmititArgs(pydantic.BaseModel):
     def to_submitit_parameters(self) -> dict[str, int | str]:
         """Produce submit-compatible dict consisting of non-None values."""
         return {k: v for k, v in self.model_dump().items() if v is not None}
+
+    @property
+    def time_in_minutes(self) -> float:
+        """Return self.time as a float."""
+        d = 0
+        time = self.time
+        if "-" in time:
+            _days, time = time.split("-")
+            d = int(_days)
+
+        h, m, s = map(int, time.split(":"))
+        return (
+            datetime.timedelta(days=d, hours=h, minutes=m, seconds=s).total_seconds()
+            / 60
+        )
 
 
 class GRPOHyperparameters(pydantic.BaseModel):
@@ -91,3 +107,4 @@ class GRPOConfig(pydantic.BaseModel):
     hyperparameters: GRPOHyperparameters
 
     optimizer_folder: Path | None = None
+    num_epochs: int
