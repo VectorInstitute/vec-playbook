@@ -111,9 +111,7 @@ def compute_grpo_loss(
     # Log-probability of the *taken* tokens under current policy
     log_prob_taken_current = torch.gather(
         log_prob_all, dim=-1, index=target_token_ids.unsqueeze(-1)
-    ).squeeze(
-        -1
-    )  # (B, T)
+    ).squeeze(-1)  # (B, T)
 
     # Clamp old/ref probabilities for stability and take logs
     taken_prob_old = taken_prob_old.clamp(min=numerical_stability_eps)
@@ -195,7 +193,6 @@ def optimize_grpo_one_epoch(
         with torch.amp.autocast(
             "cuda", enabled=(use_mixed_precision and torch.cuda.is_available())
         ):
-
             # outputs.logits: (B, T - 1, V)
             outputs = model(
                 input_ids=batch.input_ids.to(torch.long),
@@ -248,4 +245,3 @@ def optimize_grpo_one_epoch(
         raise RuntimeError("No batch was proceed!")
 
     return model, optimizer, GRPOMetrics(avg_loss=sum(loss_metrics) / len(loss_metrics))
-

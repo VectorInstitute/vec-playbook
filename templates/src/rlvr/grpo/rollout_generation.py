@@ -15,9 +15,7 @@ import pydantic
 
 from templates.src.rlvr.agents_integration.rollout_translation import (
     Rollout,
-    translate_rollout
 )
-from templates.src.rlvr.async_utils import gather_with_progress
 from templates.src.rlvr.submitit_vllm import SubmititVLLM
 
 

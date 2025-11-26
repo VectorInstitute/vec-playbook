@@ -2,7 +2,7 @@
 
 # Script for running vLLM on Bon Echo
 # Example:
-# bash run_in_container.sh uv run vllm serve /model-weights/Qwen3-8B  
+# bash run_in_container.sh uv run vllm serve /model-weights/Qwen3-8B
 source ~/.bashrc
 source /opt/lmod/lmod/init/bash
 export MODULEPATH=/opt/modulefiles:/pkgs/modulefiles:/pkgs/environment-modules

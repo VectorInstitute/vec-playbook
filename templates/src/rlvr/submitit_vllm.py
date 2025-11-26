@@ -105,9 +105,9 @@ def get_vllm_cli_args(
     for k, v in engine_args_patch.items():
         if isinstance(v, bool):
             if v:
-                output.append(f"--{".".join(k)}")
+                output.append(f"--{'.'.join(k)}")
         else:
-            output.extend((f"--{".".join(k)}", str(v)))
+            output.extend((f"--{'.'.join(k)}", str(v)))
 
     if port is None:
         port = uuid.uuid4().int % (65536 - 10000) + 10000
@@ -213,7 +213,7 @@ class _CommandFunction(submitit.helpers.CommandFunction):
             + [f"--{x}={y}" for x, y in kwargs.items()]
         )
         if self.verbose:
-            print(f'The following command is sent: "{' '.join(full_command)}"')
+            print(f'The following command is sent: "{" ".join(full_command)}"')
 
         with subprocess.Popen(
             full_command,
@@ -298,7 +298,7 @@ class SubmititVLLMWorker:
         """Launch vLLM worker and return job handle as well as watcher task."""
         args = get_vllm_cli_args(self.engine_args, vllm_cli_prefix=self.vllm_cli_prefix)
         submitit_job = self.executor.submit(_CommandFunction(args))
-        self.logger.debug(f"Launch command: {" ".join(args)}")
+        self.logger.debug(f"Launch command: {' '.join(args)}")
         self.logger.info(f"Launched: {submitit_job}")
         self.num_timeouts = 0
 

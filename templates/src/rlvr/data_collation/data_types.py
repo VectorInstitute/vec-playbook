@@ -29,9 +29,9 @@ class TypedBatch(pydantic.BaseModel):
                 batch_dims[k] = v.shape[0]
             else:
                 batch_dims[k] = len(v)
-        assert (
-            len(set(batch_dims.values())) == 1
-        ), f"Inconsistent batch dim: {batch_dims}"
+        assert len(set(batch_dims.values())) == 1, (
+            f"Inconsistent batch dim: {batch_dims}"
+        )
 
     def to_torch(self, device: torch.device, target_class: Type[T]) -> T:
         """Transfer tensors to torch.

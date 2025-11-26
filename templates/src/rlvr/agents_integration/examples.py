@@ -72,9 +72,11 @@ def get_weather(
         unit:
             Temperature unit: "c" for Celsius, "f" for Fahrenheit. Defaults to "c".
         when:
-            Time window for the report: "now", "today", or "tomorrow". Defaults to "now".
+            Time window for the report: "now", "today", or "tomorrow".
+            Defaults to "now".
 
-    Returns:
+    Returns
+    -------
         JSON string representing a `WeatherReport`.
     """
     canonical = city.strip()

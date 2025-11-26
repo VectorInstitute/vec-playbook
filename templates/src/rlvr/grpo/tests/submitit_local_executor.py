@@ -22,7 +22,7 @@ class _CommandFunction(submitit.helpers.CommandFunction):
             + [f"--{x}={y}" for x, y in kwargs.items()]
         )
         if self.verbose:
-            print(f'The following command is sent: "{' '.join(full_command)}"')
+            print(f'The following command is sent: "{" ".join(full_command)}"')
         with subprocess.Popen(
             full_command,
             stdout=subprocess.PIPE,
@@ -101,7 +101,7 @@ if pid_file.exists():
     print("===================================================")
     print("Repro instructions (run these in a *separate* shell)")
     print("===================================================")
-    print(f"1) Inspect the child process:")
+    print("1) Inspect the child process:")
     print(f"   ps -p {child_pid} -o pid,ppid,cmd")
     print()
     print("You should see the python -c '...time.sleep(600)...' process")
