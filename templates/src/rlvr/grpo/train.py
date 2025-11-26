@@ -102,20 +102,20 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
         self.evaluator = RLVREvaluator(eval_agent)
 
         # Run one replica locally while running other replicas on SLURM.
-        local_executor = submitit.LocalExecutor(
+        self.local_executor = submitit.LocalExecutor(
             folder=cfg.submitit_logs_folder, python="uv run python"
         )
         visible_gpus = list(
             map(int, environ.get("CUDA_VISIBLE_DEVICES", "0").split(","))
         )
-        local_executor.update_parameters(
+        self.local_executor.update_parameters(
             visible_gpus=visible_gpus,
             gpus_per_node=len(visible_gpus),
             timeout_min=cfg.rollout_vllm.submitit_args.time_in_minutes,
         )
         local_executor_config = ExecutorConfig(
             name="local",
-            executor=local_executor,
+            executor=self.local_executor,
             num_replicas=1,
             concurrency=cfg.rollout_vllm.concurrency_per_replica,
         )
@@ -256,14 +256,18 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
         advantages_test = self.calculate_advantage(
             data_all[num_train:], run_results[num_train:], evals=evals[num_train:]
         )
-        metrics = grpo_optimization_step(
-            advantages_train,
-            current_policy_path=_paths.current,
-            kl_ref_path=_paths.kl_ref,
-            checkpoint_output_path=_paths.output,
-            optimizer_path=self.cfg.optimizer_folder,
-            hyperparameters=self.cfg.hyperparameters,
-        )
+
+        self.logger.info("Running GRPO backprop...")
+        metrics = self.local_executor.submit(
+            lambda: grpo_optimization_step(
+                advantages_train,
+                current_policy_path=_paths.current,
+                kl_ref_path=_paths.kl_ref,
+                checkpoint_output_path=_paths.output,
+                optimizer_path=self.cfg.optimizer_folder,
+                hyperparameters=self.cfg.hyperparameters,
+            )
+        ).result()
         return metrics, advantages_test.avg_reward
 
     def __call__(self, cfg: GRPOConfig):
