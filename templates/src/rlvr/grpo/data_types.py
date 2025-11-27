@@ -1,6 +1,6 @@
 """Data types for GRPO."""
 
-from typing import Annotated, Any, Sequence
+from typing import TYPE_CHECKING, Annotated, Any, Sequence
 
 import numpy as np
 import pydantic
@@ -14,6 +14,25 @@ from templates.src.rlvr.data_collation.batch import (
 )
 from templates.src.rlvr.data_collation.data_types import TypedBatch
 from templates.src.rlvr.shared_types import ChatMessage
+
+
+if TYPE_CHECKING:
+    from langfuse._client.datasets import DatasetItemClient
+else:
+    DatasetItemClient = Any
+
+
+class RLVRDataItem(pydantic.BaseModel):
+    """One row in the RLVR training dataset."""
+
+    model_config = pydantic.ConfigDict(extra="ignore")
+
+    query: str
+    target: str | float
+    metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
+    lf_dataset_client: "DatasetItemClient | None" = pydantic.Field(
+        default=None, exclude=True
+    )
 
 
 def _assistant_char_spans(

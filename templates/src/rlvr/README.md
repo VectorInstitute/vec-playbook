@@ -58,10 +58,11 @@ Examples:
 uv run python \
 -m rlvr.grpo.launch \
 --multirun \
-compute=vaughan/a40_1x \
+compute=killarney/l40s_1x \
 requeue=off \
 +trainer.num_epochs=10 \
-+trainer.data.train_split="train\[:100\]"
++trainer.data.train_split="train\[:100\]" \
++train.run_name="grpo_gsm8k_dry_run"
 ```
 
 ## Adapting to your workflow

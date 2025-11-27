@@ -66,7 +66,6 @@ class VLLMConfigs(pydantic.BaseModel):
 
     cache_dir: Path
 
-    uv_venv: Path
     submitit_args: SubmititArgs
     submitit_python: str | None = None
 
@@ -108,3 +107,5 @@ class GRPOConfig(pydantic.BaseModel):
 
     optimizer_folder: Path | None = None
     num_epochs: int
+
+    run_name: str = "grpo"

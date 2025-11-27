@@ -22,6 +22,7 @@ from typing import (
     TypeVar,
 )
 
+import backoff
 import httpx
 import openai
 import pydantic
@@ -110,7 +111,7 @@ def get_vllm_cli_args(
             output.extend((f"--{'.'.join(k)}", str(v)))
 
     if port is None:
-        port = uuid.uuid4().int % (65536 - 10000) + 10000
+        port = uuid.uuid4().int % int(65536 - 10000) + 10000
 
     output.extend(("--port", str(port)))
 
@@ -612,6 +613,7 @@ class SubmititVLLM:
                 **base_config,
             )
 
+    @backoff.on_exception(backoff.expo, openai.APITimeoutError)
     async def run_agent(
         self,
         agent: "agents.Agent",
