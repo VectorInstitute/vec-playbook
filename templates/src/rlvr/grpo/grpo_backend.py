@@ -193,7 +193,7 @@ def optimize_grpo_one_epoch(
         with torch.amp.autocast(
             "cuda", enabled=(use_mixed_precision and torch.cuda.is_available())
         ):
-            # outputs.logits: (B, T - 1, V)
+            # outputs.logits is of shape (B, T - 1, V)
             outputs = model(
                 input_ids=batch.input_ids.to(torch.long),
                 attention_mask=batch.attention_mask.to(torch.long),
@@ -210,7 +210,7 @@ def optimize_grpo_one_epoch(
                 target_token_ids=batch.input_ids[:, 1:].to(torch.long),
                 valid_token_mask=batch.loss_masks[:, 1:],
                 advantage_per_token=batch.per_token_advantage[:, 1:].to(torch.float32),
-                # (B, T - 1)
+                # of shape (B, T - 1)
                 taken_prob_old=taken_prob_base.selected.to(torch.float32),
                 taken_prob_ref=taken_prob_ref.selected.to(torch.float32),
                 # Hyperparameters
@@ -242,6 +242,6 @@ def optimize_grpo_one_epoch(
     progress.__exit__(None, None, None)
 
     if not loss_metrics:
-        raise RuntimeError("No batch was proceed!")
+        raise RuntimeError("No batch was processed!")
 
     return model, optimizer, GRPOMetrics(avg_loss=sum(loss_metrics) / len(loss_metrics))

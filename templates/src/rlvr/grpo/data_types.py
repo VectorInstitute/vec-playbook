@@ -198,16 +198,24 @@ class PerTokenProbs(pydantic.BaseModel):
 
 
 class BatchForInference(TypedBatch):
-    """Typed batch for getting probs."""
+    """Typed batch for getting probs.
 
-    # (batch, input_tokens)
+    Shapes:
+        input_ids: (batch, input_tokens) of integers
+    """
+
     input_ids: Annotated[torch.Tensor, SkipJsonSchema[None]]
 
 
 class BatchForGRPO(TypedBatch):
-    """Typed batch for GRPO training."""
+    """Typed batch for GRPO training.
 
-    # (batch, input_tokens)
+    Shapes:
+        input_ids: (batch, input_tokens) of integers
+        loss_masks: (batch, input_tokens) of booleans
+        per_token_advantage: (batch, input_tokens) of floats
+    """
+
     input_ids: Annotated[torch.Tensor, SkipJsonSchema[None]]
     loss_masks: Annotated[torch.Tensor, SkipJsonSchema[None]]
     per_token_advantage: Annotated[torch.Tensor, SkipJsonSchema[None]]
@@ -233,9 +241,13 @@ class AdvantageData(pydantic.BaseModel):
 
         # per-trace only, not token-level
         rewards = np.asarray([_detail.reward for _detail in reward_details])
-        advantages_np: np.ndarray = np.asarray(
-            (rewards - rewards.mean()) / rewards.std()
-        )
+        std = rewards.std()
+        if std == 0 or np.isclose(std, 0):
+            # All rewards are the same - no advantage signal
+            advantages_np = np.zeros_like(rewards)
+        else:
+            advantages_np = (rewards - rewards.mean()) / std
+
         advantages: list[float] = advantages_np.flatten().tolist()
 
         advantage_details: list[_AdvantageDetail] = []
@@ -293,21 +305,3 @@ class GRPOMetrics(pydantic.BaseModel):
 
     avg_loss: float | None = None
     grad_norm: float | None = None
-
-
-class GRPOHyperparameters(pydantic.BaseModel):
-    """GRPO Hyperparameters.
-
-    TODO: divide into performance-related parameters and
-    parameters related to numerical values.
-    """
-
-    max_model_len: int
-    train_batch_size: int
-
-    # for forward pass only, and not for vLLM rollout.
-    inference_batch_size: int
-
-    learning_rate: float = 1e-5
-    adam_betas: tuple[float, float] = (0.9, 0.999)
-    adam_weight_decay: float = 0.0

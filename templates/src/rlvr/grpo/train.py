@@ -17,10 +17,15 @@ from transformers import AutoTokenizer
 from vllm import EngineArgs
 from vllm.config import CompilationConfig
 
+from templates.src.rlvr.agents_integration.logging_utils import set_up_logging
 from templates.src.rlvr.agents_integration.rollout_translation import translate_rollout
 from templates.src.rlvr.async_utils import gather_with_progress
 from templates.src.rlvr.grpo.config import DataConfig, GRPOConfig
-from templates.src.rlvr.grpo.data_types import AdvantageData, RewardDetailTokenized
+from templates.src.rlvr.grpo.data_types import (
+    AdvantageData,
+    GRPOMetrics,
+    RewardDetailTokenized,
+)
 from templates.src.rlvr.grpo.grpo_frontend import grpo_optimization_step
 from templates.src.rlvr.grpo.rollout_generation import (
     EvalResult,
@@ -97,7 +102,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
         self.logger.setLevel(logging.INFO)
         self.cfg = cfg
         self.run_name = (
-            f"{cfg.run_name}-{datetime.datetime.now().strftime("%y%m%d-%H%M%S")}"
+            f"{cfg.run_name}-{datetime.datetime.now().strftime('%y%m%d-%H%M%S')}"
         )
 
         self.optimizer_path = (
@@ -158,6 +163,8 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
             ),
         ]
 
+        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.base_model)
+
     def get_checkpoint_paths(self, step_index: int) -> _CheckpointPaths:
         """Return checkpoint paths and recycle previous checkpoints if enabled.
 
@@ -186,7 +193,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
 
         return _CheckpointPaths(current=_current, output=_output, kl_ref=_kl_ref)
 
-    def generate_rollout(
+    async def generate_rollout(
         self,
         data: Sequence[RLVRDataItem],
         model_name: str | pathlib.Path,
@@ -215,8 +222,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
                 )
                 for _item in data
             ]
-            coro = gather_with_progress(coros, "Rollout...")
-            rollouts = asyncio.get_event_loop().run_until_complete(coro)
+            rollouts = await gather_with_progress(coros, "Rollout...")
 
         results = [_result for _result, _ in rollouts]
         trace_ids = [_trace_id for _, _trace_id in rollouts]
@@ -224,7 +230,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
 
         return results, trace_ids, answers
 
-    def score_rollouts(
+    async def score_rollouts(
         self, data: Sequence[RLVRDataItem], answers: Sequence[str]
     ) -> Sequence[EvalResult]:
         """Score a list of answers, using LLM judge."""
@@ -243,8 +249,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
                 self.evaluator(_item, proposed=_answer, submitit_vllm=evaluator_vllm)
                 for _item, _answer in zip(data, answers)
             ]
-            coro = gather_with_progress(coros, "LLM-Judge...")
-            return asyncio.get_event_loop().run_until_complete(coro)
+            return await gather_with_progress(coros, "LLM-Judge...")
 
     def calculate_advantage(
         self,
@@ -253,12 +258,11 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
         evals: Sequence[EvalResult],
     ) -> AdvantageData:
         """Calculate advantage given rollouts and eval results."""
-        tokenizer = AutoTokenizer.from_pretrained(self.cfg.base_model)
         tokenized_reward_details = [
             RewardDetailTokenized.from_messages(
                 translate_rollout(_run_result, _item.query, policy_agent).messages,
                 reward=_eval.score,
-                tokenizer=tokenizer,
+                tokenizer=self.tokenizer,
                 pad_to=self.cfg.hyperparameters.max_model_len,
             )
             for _item, _run_result, _eval in zip(data, run_results, evals)
@@ -266,17 +270,17 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
 
         return AdvantageData.from_list_of_rewards(tokenized_reward_details)
 
-    def run_step(self, index: int, data: dict[str, list[RLVRDataItem]]):
+    async def run_step(self, index: int, data: dict[str, list[RLVRDataItem]]):
         """Run one GRPO step."""
         _paths = self.get_checkpoint_paths(index)
 
         num_train = len(data["train"])
         data_all = data["train"] + data["test"]  # process both splits in one pass
 
-        run_results, trace_ids, answers = self.generate_rollout(
+        run_results, trace_ids, answers = await self.generate_rollout(
             data_all, _paths.current, run_name=f"step_{index:03d}"
         )
-        evals = self.score_rollouts(data=data_all, answers=answers)
+        evals = await self.score_rollouts(data=data_all, answers=answers)
         advantages_train = self.calculate_advantage(
             data_all[:num_train], run_results[:num_train], evals=evals[:num_train]
         )
@@ -301,18 +305,23 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
 
         return metrics, advantages_test.avg_reward
 
-    def __call__(self, cfg: GRPOConfig):
+    async def async_main(self):
         """Run full GRPO loop."""
         data = load_data(self.cfg.data)
         initialize_lf_dataset(
             data["test"], f"{self.run_name}-test", self.cfg.model_dump()
         )
 
-        metrics = []
-        for _epoch in range(cfg.num_epochs):
-            metrics.append(self.run_step(_epoch, data))
+        metrics: list[tuple[GRPOMetrics, float | None]] = []
+        for _epoch in range(self.cfg.num_epochs):
+            metrics.append(await self.run_step(_epoch, data))
 
         return metrics
+
+    def __call__(self):
+        """Launch the async main function."""
+        set_up_logging()
+        return asyncio.run(self.async_main())
 
     def checkpoint(self, *args, **kwargs) -> submitit.helpers.DelayedSubmission:
         """Save state and launch the same callable with the same arguments."""

@@ -157,6 +157,7 @@ async def async_tail_job_logs(
     on_stderr: Callable[[str], Coroutine[None, None, None]],
     on_interrupt: Callable[[], Coroutine[None, None, None]],
     poll: float = 0.25,
+    job_ready_signal: asyncio.Event | None = None,
 ) -> None:
     """
     Asynchronously follow stdout/stderr and invoke callbacks for each new line.
@@ -167,7 +168,11 @@ async def async_tail_job_logs(
         on_stderr: Callback for stderr lines.
         on_interrupt: Callback when job exits (not when this task is cancelled.)
         poll: Poll interval for file growth and completion checks.
+        job_ready_signal: If provided, wait until triggered before checking job status.
     """
+    if job_ready_signal:
+        await job_ready_signal.wait()
+
     out_p, err_p = job.paths.stdout, job.paths.stderr
 
     # Wait for any log file to appear or the job to finish early.
@@ -251,6 +256,7 @@ class SubmititVLLMWorker:
         engine_args: "EngineArgs",
         submitit_executor: submitit.Executor,
         max_num_timeouts: int,
+        launch_complete_signal: asyncio.Event | None = None,
         vllm_cli_prefix: str | list[str] = VLLM_CLI_PREFIX,
         worker_name: str = __name__,
         ping_sticky_seconds: float = 1.0,
@@ -274,6 +280,8 @@ class SubmititVLLMWorker:
         - worker_name: for logging.
         - max_num_timeouts: restart worker if it times out after this many checks.
         - ping_sticky_seconds: each successful ping is valid for this many seconds.
+        - launch_complete_signal: If provided, wait on this before checking job status.
+            Useful e.g., if jobs are launched via Submitit slurm_executor.batch().
         """
         self.logger = logging.getLogger(worker_name)
         self.metrics_logger = logging.getLogger(f"{worker_name}.metrics")
@@ -286,16 +294,22 @@ class SubmititVLLMWorker:
         self.engine_args = engine_args
         self.vllm_cli_prefix = vllm_cli_prefix
 
+        # This instance is launched via batch submission.
         self.watcher_task: asyncio.Task[None]
-        self.submitit_job, self.watcher_task = self._launch_worker()
+        self.submitit_job, self.watcher_task = self._launch_worker(
+            launch_complete_signal
+        )
 
         self.ping_lock = asyncio.Lock()
         self.ping_is_ready: bool = False
         self.ping_sticky_seconds = ping_sticky_seconds
+
+        # Only one ping reset task is needed- don't create extras.
+        self.ping_reset_task: asyncio.Task[None] | None = None
         self.max_num_timeouts = max_num_timeouts
         self.num_timeouts = 0
 
-    def _launch_worker(self):
+    def _launch_worker(self, job_ready_signal: asyncio.Event | None = None):
         """Launch vLLM worker and return job handle as well as watcher task."""
         args = get_vllm_cli_args(self.engine_args, vllm_cli_prefix=self.vllm_cli_prefix)
         submitit_job = self.executor.submit(_CommandFunction(args))
@@ -303,12 +317,13 @@ class SubmititVLLMWorker:
         self.logger.info(f"Launched: {submitit_job}")
         self.num_timeouts = 0
 
-        watcher_task = asyncio.get_event_loop().create_task(
+        watcher_task = asyncio.create_task(
             async_tail_job_logs(
                 submitit_job,
                 on_stdout=self._handle_job_output,
                 on_stderr=self._handle_job_output,
                 on_interrupt=self._handle_job_interrupted,
+                job_ready_signal=job_ready_signal,
             )
         )
         return submitit_job, watcher_task
@@ -411,7 +426,9 @@ class SubmititVLLMWorker:
                 return False
 
             self.ping_is_ready = True
-            asyncio.create_task(self._reset_ping_status())
+            if not self.ping_reset_task:
+                self.ping_reset_task = asyncio.create_task(self._reset_ping_status())
+
             return True
 
     async def _reset_ping_status(self):
@@ -507,11 +524,14 @@ class SubmititVLLM:
         self.worker_semaphores: list[asyncio.Semaphore] = []
 
         for _cfg in executor_configs:
+            # Make sure workers wait until all jobs are batched before checking status
+            _batch_submit_complete = asyncio.Event()
             with _cfg.executor.batch():
                 _workers = [
                     SubmititVLLMWorker(
                         engine_args=engine_args,
                         submitit_executor=_cfg.executor,
+                        launch_complete_signal=_batch_submit_complete,
                         vllm_cli_prefix=vllm_cli_prefix,
                         max_num_timeouts=2 * _cfg.concurrency,
                         worker_name=f"{logger_name_prefix}.{_cfg.name}.{_index:03d}",
@@ -519,6 +539,8 @@ class SubmititVLLM:
                     for _index in range(_cfg.num_replicas)
                 ]
                 self.workers.extend(_workers)
+
+            _batch_submit_complete.set()
 
             _semaphores = [
                 asyncio.Semaphore(_cfg.concurrency) for _ in range(_cfg.num_replicas)
@@ -600,7 +622,7 @@ class SubmititVLLM:
         self, run_config_base: "agents.RunConfig | None" = None
     ):
         """Wrap around get_client."""
-        import agents
+        import agents  # noqa: PLC0415
 
         base_config = run_config_base.__dict__ if run_config_base else {}
         base_config.pop("model", None)
@@ -621,7 +643,7 @@ class SubmititVLLM:
         run_config: "agents.RunConfig | None" = None,
     ):
         """Get client and invoke agent."""
-        import agents
+        import agents  # noqa: PLC0415
 
         async with self.get_oai_agents_config(run_config) as _config:
             return await agents.Runner.run(agent, input=query, run_config=_config)

@@ -3,13 +3,13 @@ defaults:
 
 vllm_cache_dir_base: "${oc.env:SCRATCH}/.cache/vllm_compiled_graphs/"
 
-base_vllm_config: &base_vllm_config
-  # # required for vaughan or if you installed vllm in a separate venv
-  # submitit_python: "templates/configs/compute/vaughan/run_in_container.sh uv run python"
+base_vllm_config:
+  &base_vllm_config # # required for vaughan or if you installed vllm in a separate venv
+  submitit_python: "templates/configs/compute/vaughan/run_in_container.sh uv run python"
   submitit_args:
-    # partition: "a40"
-    # qos: "m5"
-    gres: "gpu:l40s:1"
+    gres: "gpu:l40s:1" # for killarney
+    # gres: "gpu:a40:1" # for vaughan
+    timeout_min:
     account: "${user.slurm.account}"
 
 trainer:
@@ -24,7 +24,7 @@ trainer:
     <<: *base_vllm_config
 
     max_model_len: 2048
-    num_replicas: 5 # 5 runners via SLURM, plus local GPU
+    num_replicas: 1 # 5 runners via SLURM, plus local GPU
     concurrency_per_replica: 128
 
     cache_dir: "${vllm_cache_dir_base}/${trainer.base_model}"

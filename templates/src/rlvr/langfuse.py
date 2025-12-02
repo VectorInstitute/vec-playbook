@@ -24,11 +24,11 @@ logger = logging.getLogger(__name__)
 
 
 def get_langfuse_client() -> "Langfuse | None":
-    """Set up LangFuse client only when required and not on every import.
+    """Set up LangFuse client *only when requested* and not on every import.
 
     Might raise exception if LangFuse is not configured.
     """
-    from langfuse import get_client
+    from langfuse import get_client  # noqa: PLC0415
 
     client = get_client()
 
@@ -57,7 +57,7 @@ def maybe_setup_langfuse_instrumentation(service_name: str = "rlvr-grpo") -> Non
     get_langfuse_client()
 
     try:
-        import logfire  # type: ignore
+        import logfire  # type: ignore  # noqa: PLC0415
     except Exception:
         return
 
@@ -66,6 +66,7 @@ def maybe_setup_langfuse_instrumentation(service_name: str = "rlvr-grpo") -> Non
         logfire.configure(
             service_name=getenv("LANGFUSE_SERVICE_NAME", service_name),
             send_to_logfire=False,
+            console=False,
         )
         # Patch OpenAI Agents SDK to emit spans
         logfire.instrument_openai_agents()
@@ -132,7 +133,7 @@ def initialize_lf_dataset(
 
     Updates RLVRDataItem `items` in-place to make LangFuse dataset client available.
     """
-    from langfuse._client.datasets import DatasetItemClient
+    from langfuse._client.datasets import DatasetItemClient  # noqa: PLC0415
 
     langfuse_client = get_langfuse_client()
     if not langfuse_client:
@@ -140,7 +141,9 @@ def initialize_lf_dataset(
 
     langfuse_client.create_dataset(name=dataset_name, metadata=metadata)
     for _item in items:
-        _lf_dataset_item = langfuse_client.create_dataset_item(
+        _lf_dataset_item = backoff.on_exception(backoff.expo, httpx.TransportError)(
+            langfuse_client.create_dataset_item
+        )(
             dataset_name=dataset_name,
             input=_item.query,
             expected_output=_item.target,

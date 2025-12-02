@@ -73,7 +73,7 @@ Configurable options:
 - dataset (the example uses `openai/gsm8k`)
 - evaluation scheme and LLM judge setup
 
-## Optional- Observability Integration
+## Optional- Observability Integration via LangFuse
 
 Set up LangFuse to track the output of your models as training proceeds.
 

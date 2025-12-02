@@ -29,7 +29,7 @@ def main(cfg: DictConfig):
 
     grpo_config = GRPOConfig.model_validate(cfg.__dict__["_content"]["trainer"])
     trainer = GRPOTrainer(grpo_config)
-    metrics = trainer(grpo_config)
+    metrics = trainer()
     for _epoch, (_item, _reward) in metrics:
         print(f"epoch: {_epoch}, reward: {_reward:.03f}, metrics: {_item}")
 

@@ -27,7 +27,7 @@ def grpo_optimization_step(
     optimizer_path: pathlib.Path | None,
 ) -> GRPOMetrics:
     """Run one GRPO optimization step given advantages."""
-    device = torch.device("cuda:0")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     logger.info(f"Loading kl_ref weights to CUDA: {kl_ref_path}")
     kl_ref_model = AutoModelForCausalLM.from_pretrained(kl_ref_path)
@@ -60,7 +60,7 @@ def grpo_optimization_step(
         model_pi_ref=kl_ref_model,
         model=policy_model,
         optimizer=optimizer,
-        gradient_accumulation_steps=1,
+        gradient_accumulation_steps=hyperparameters.grad_acc_steps,
     )
     logger.info(f"metrics: {metrics.model_dump_json(indent=2)}")
     logger.info(f"Writing model to: {checkpoint_output_path}")
