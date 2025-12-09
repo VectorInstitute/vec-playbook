@@ -15,7 +15,7 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
 )
 
-from templates.src.rlvr.shared_types import ChatMessage
+from ..shared_types import ChatMessage
 
 
 class Rollout(pydantic.BaseModel):

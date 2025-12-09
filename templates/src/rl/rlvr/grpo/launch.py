@@ -6,8 +6,8 @@ import os
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from templates.src.rlvr.grpo.config import GRPOConfig
-from templates.src.rlvr.grpo.train import GRPOTrainer
+from .config import GRPOConfig
+from .train import GRPOTrainer
 
 
 _CONFIG_PATH = os.path.normpath(

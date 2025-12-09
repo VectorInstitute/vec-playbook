@@ -17,43 +17,28 @@ from transformers import AutoTokenizer
 from vllm import EngineArgs
 from vllm.config import CompilationConfig
 
-from templates.src.rlvr.agents_integration.logging_utils import set_up_logging
-from templates.src.rlvr.agents_integration.rollout_translation import translate_rollout
-from templates.src.rlvr.async_utils import gather_with_progress
-from templates.src.rlvr.grpo.config import DataConfig, GRPOConfig
-from templates.src.rlvr.grpo.data_types import (
-    AdvantageData,
-    GRPOMetrics,
-    RewardDetailTokenized,
-)
-from templates.src.rlvr.grpo.grpo_frontend import grpo_optimization_step
-from templates.src.rlvr.grpo.rollout_generation import (
-    EvalResult,
-    RLVRDataItem,
-    RLVREvaluator,
-)
-from templates.src.rlvr.langfuse import (
+from ..agents_integration.logging_utils import set_up_logging
+from ..agents_integration.rollout_translation import translate_rollout
+from ..async_utils import gather_with_progress
+from ..langfuse import (
     TraceID,
     add_score,
     initialize_lf_dataset,
     maybe_traced,
 )
-from templates.src.rlvr.progress_utils import spinner
-from templates.src.rlvr.submitit_vllm import ExecutorConfig, SubmititVLLM
-
-
-policy_agent = agents.Agent(
-    "Math Problem Solver", instructions="Solve the math problem."
+from ..progress_utils import spinner
+from ..submitit_vllm import ExecutorConfig, SubmititVLLM
+from .config import DataConfig, GRPOConfig
+from .data_types import (
+    AdvantageData,
+    GRPOMetrics,
+    RewardDetailTokenized,
 )
-
-# Eval agent must support structured output and use output_type EvalResult
-eval_agent = agents.Agent(
-    "Evaluator",
-    instructions=(
-        "Evaluate if the `proposed` response matches the ground-truth `target`."
-        "Give a score of 0.0 if incorrect and 1.0 if correct."
-    ),
-    output_type=EvalResult,
+from .grpo_frontend import grpo_optimization_step
+from .rollout_generation import (
+    EvalResult,
+    RLVRDataItem,
+    RLVREvaluator,
 )
 
 
@@ -96,6 +81,20 @@ def load_data(data_cfg: DataConfig):
 class GRPOTrainer(submitit.helpers.Checkpointable):
     """GRPO using on-policy SLURM rollout and one-GPU backprop."""
 
+    policy_agent = agents.Agent(
+        "Math Problem Solver", instructions="Solve the math problem."
+    )
+
+    # Eval agent must support structured output and use output_type EvalResult
+    eval_agent = agents.Agent(
+        "Evaluator",
+        instructions=(
+            "Evaluate if the `proposed` response matches the ground-truth `target`."
+            "Give a score of 0.0 if incorrect and 1.0 if correct."
+        ),
+        output_type=EvalResult,
+    )
+
     def __init__(self, cfg: GRPOConfig):
         self.ckpt_dir = None
         self.logger = logging.getLogger(__name__)
@@ -116,7 +115,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
         self.checkpoints: list[pathlib.Path] = []
 
         # Initialize policy and KL ref to base model.
-        self.evaluator = RLVREvaluator(eval_agent)
+        self.evaluator = RLVREvaluator(self.eval_agent)
 
         # Run one replica locally while running other replicas on SLURM.
         self.local_executor = submitit.LocalExecutor(
@@ -216,7 +215,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
         ) as _vllm:
             coros = [
                 maybe_traced(
-                    lambda _item=_item: _vllm.run_agent(policy_agent, _item.query),
+                    lambda _item=_item: _vllm.run_agent(self.policy_agent, _item.query),
                     _item.lf_dataset_client,
                     run_name=run_name,
                 )
@@ -260,7 +259,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
         """Calculate advantage given rollouts and eval results."""
         tokenized_reward_details = [
             RewardDetailTokenized.from_messages(
-                translate_rollout(_run_result, _item.query, policy_agent).messages,
+                translate_rollout(_run_result, _item.query, self.policy_agent).messages,
                 reward=_eval.score,
                 tokenizer=self.tokenizer,
                 pad_to=self.cfg.hyperparameters.max_model_len,

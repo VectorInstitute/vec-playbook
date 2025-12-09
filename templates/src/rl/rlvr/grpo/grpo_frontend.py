@@ -4,14 +4,14 @@ import logging
 import pathlib
 
 import torch
-from rlvr.grpo.grpo_backend import optimize_grpo_one_epoch
 from transformers import AutoModelForCausalLM
 
-from templates.src.rlvr.grpo.config import GRPOHyperparameters
-from templates.src.rlvr.grpo.data_types import (
+from .config import GRPOHyperparameters
+from .data_types import (
     AdvantageData,
     GRPOMetrics,
 )
+from .grpo_backend import optimize_grpo_one_epoch
 
 
 logger = logging.getLogger(__name__)

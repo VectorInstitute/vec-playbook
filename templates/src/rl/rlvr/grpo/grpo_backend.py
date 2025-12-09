@@ -8,7 +8,7 @@ from rich.progress import Progress
 from torch.nn.functional import log_softmax, softmax
 from transformers import PreTrainedModel
 
-from templates.src.rlvr.grpo.data_types import (
+from .data_types import (
     BatchForGRPO,
     BatchForInference,
     GRPOBatcher,

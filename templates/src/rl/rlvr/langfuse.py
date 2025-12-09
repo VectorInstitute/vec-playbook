@@ -7,15 +7,15 @@ from typing import TYPE_CHECKING, Any, Callable, Coroutine, Sequence, TypeVar
 import backoff
 import httpx
 
-from templates.src.rlvr.progress_utils import spinner
+from .progress_utils import spinner
 
 
 if TYPE_CHECKING:
     from langfuse import Langfuse
     from langfuse._client.datasets import DatasetItemClient
 
-    from templates.src.rlvr.grpo.data_types import RLVRDataItem
-    from templates.src.rlvr.grpo.rollout_generation import EvalResult
+    from .grpo.data_types import RLVRDataItem
+    from .grpo.rollout_generation import EvalResult
 
 V = TypeVar("V")
 TraceID = str

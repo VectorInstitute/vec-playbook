@@ -8,12 +8,12 @@ import torch
 from pydantic.json_schema import SkipJsonSchema
 from transformers import PreTrainedTokenizerFast
 
-from templates.src.rlvr.data_collation.batch import (
+from ..data_collation.batch import (
     FieldConfig,
     TypedBatcher,
 )
-from templates.src.rlvr.data_collation.data_types import TypedBatch
-from templates.src.rlvr.shared_types import ChatMessage
+from ..data_collation.data_types import TypedBatch
+from ..shared_types import ChatMessage
 
 
 if TYPE_CHECKING:

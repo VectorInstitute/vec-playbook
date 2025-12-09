@@ -11,12 +11,12 @@ import backoff
 import openai
 import pydantic
 
-from templates.src.rlvr.agents_integration.rollout_translation import (
+from ..agents_integration.rollout_translation import (
     Rollout,
 )
-from templates.src.rlvr.grpo.data_types import RLVRDataItem
-from templates.src.rlvr.langfuse import maybe_setup_langfuse_instrumentation
-from templates.src.rlvr.submitit_vllm import SubmititVLLM
+from ..langfuse import maybe_setup_langfuse_instrumentation
+from ..submitit_vllm import SubmititVLLM
+from .data_types import RLVRDataItem
 
 
 # Only if LangFuse API keys are set in env var.

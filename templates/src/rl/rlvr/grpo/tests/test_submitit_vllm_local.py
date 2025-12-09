@@ -8,7 +8,8 @@ import submitit
 from vllm.config import CompilationConfig
 from vllm.engine.arg_utils import EngineArgs
 
-from templates.src.rlvr.submitit_vllm import ExecutorConfig, SubmititVLLM
+# "best practice" to use absolute imports for pytest
+from templates.src.rl.rlvr.submitit_vllm import ExecutorConfig, SubmititVLLM
 
 
 MODEL = os.environ.get("MODEL_NAME", "/model-weights/Qwen3-8B")

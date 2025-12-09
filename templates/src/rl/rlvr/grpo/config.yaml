@@ -7,8 +7,8 @@ base_vllm_config:
   &base_vllm_config # # required for vaughan or if you installed vllm in a separate venv
   submitit_python: "templates/configs/compute/vaughan/run_in_container.sh uv run python"
   submitit_args:
-    gres: "gpu:l40s:1" # for killarney
-    # gres: "gpu:a40:1" # for vaughan
+    # gres: "gpu:l40s:1" # for killarney
+    gres: "gpu:a40:1" # for vaughan
     timeout_min:
     account: "${user.slurm.account}"
 
