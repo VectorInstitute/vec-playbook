@@ -11,7 +11,7 @@ from .train import GRPOTrainer
 
 
 _CONFIG_PATH = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "../../../configs")
+    os.path.join(os.path.dirname(__file__), "../../../../configs")
 )
 log = logging.getLogger(__name__)
 
@@ -20,14 +20,14 @@ log = logging.getLogger(__name__)
 def main(cfg: DictConfig):
     """Run entrypoint that merges local config and runs the Trainer."""
     local_cfg = OmegaConf.load(os.path.join(os.path.dirname(__file__), "config.yaml"))
-    cfg = OmegaConf.merge(local_cfg, cfg)  # type: ignore
     OmegaConf.set_struct(cfg, False)
+    cfg = OmegaConf.merge(cfg, local_cfg)  # type: ignore
 
     if "trainer" in cfg:
         trainer_cfg = cfg.trainer
         cfg = OmegaConf.merge(cfg, trainer_cfg)  # type: ignore
 
-    grpo_config = GRPOConfig.model_validate(cfg.__dict__["_content"]["trainer"])
+    grpo_config = GRPOConfig.model_validate(dict(cfg.trainer))
     trainer = GRPOTrainer(grpo_config)
     metrics = trainer()
     for _epoch, (_item, _reward) in metrics:

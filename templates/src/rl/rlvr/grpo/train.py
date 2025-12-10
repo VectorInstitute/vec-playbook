@@ -171,21 +171,23 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
         - At the next step, use new output as base model, and base model as KL ref.
         - Subsequently, at the Nth step, use N-1 as base policy and N-2 as KL ref.
         """
-        new_checkpoint = self.cfg.checkpoint_folder / f"step_{step_index:03d}"
-        self.logger.info(f"Next checkpoint path: {new_checkpoint}")
-        makedirs(new_checkpoint, exist_ok=True)
+        output_checkpoint = self.cfg.checkpoint_folder / f"step_{step_index:03d}"
+        self.checkpoints.append(output_checkpoint)
+        self.logger.info(f"Next checkpoint path: {output_checkpoint}")
+        makedirs(output_checkpoint, exist_ok=True)
 
-        checkpoints = [
+        # At start up, use base model for both KL and as base policy
+        # At step 1, use base model for KL.
+        checkpoints_including_base = [
             self.cfg.base_model,  # Initial KL
             self.cfg.base_model,  # Initial base policy
             *self.checkpoints,
-            new_checkpoint,
         ]
+        *_, _kl_ref, _current, _output = checkpoints_including_base
 
-        *_, _kl_ref, _current, _output = checkpoints
-
-        # Delete all but the two most recent checkpoints (kl, current)
-        if len(self.checkpoints) > 2:
+        # Delete all but the two most recent newly-created checkpoints (kl, current)
+        # base model should not be deleted.
+        if (not self.cfg.keep_all_checkpoints) and (len(self.checkpoints) > 2):
             *_to_delete, _kl_ref, _current = self.checkpoints
             for _folder in _to_delete:
                 rmtree(_folder)

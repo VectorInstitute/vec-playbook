@@ -30,7 +30,7 @@ This reference implementation depends on `vllm>=0.11.0`. vLLM does not provide p
 
 ```bash
 uv run python \
--m rlvr.grpo.launch \
+-m rl.rlvr.grpo.launch \
 --multirun \
 compute=killarney/l40s_1x \
 requeue=off \
