@@ -1,3 +1,7 @@
+defaults:
+  - _global  # Import global config settings
+  - _self_  # Must include the settings from this file
+
 trainer:
   model_name: distilbert-base-uncased
   dataset_name: ag_news
@@ -9,5 +13,12 @@ trainer:
   learning_rate: 5e-5
   weight_decay: 0.01
   logging_steps: 50
-  save_steps: 100
+  save_steps: 100  # Save every N steps, cktp number is incremental.
   eval_steps: 200
+  save_total_limit: 2  # By default the latest and best checkpoint will always be kept.
+
+hydra:
+  job:
+    name: hydra_txt-classifier
+  searchpath:
+    - pkg://configs  # Include configs from the configs package in the searchpath

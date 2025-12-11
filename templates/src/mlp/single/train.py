@@ -1,11 +1,15 @@
 """Single-GPU MLP training with checkpointing."""
 
 import os
+import logging
 
 import submitit
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader, TensorDataset
+from omegaconf import OmegaConf, DictConfig
+
+logger = logging.getLogger(__name__)
 
 
 def create_dummy_data(
@@ -52,26 +56,33 @@ class CheckpointableMLPTrainer(submitit.helpers.Checkpointable):
         }
 
         torch.save(checkpoint, os.path.join(save_dir, "model.pt"))
-        print(f"Checkpoint saved at epoch {epoch}")
+        logger.info(f"Checkpoint saved at epoch {epoch}")
 
     def __call__(self, cfg):
         """Train the MLP model."""
-        out_dir = os.path.join(cfg.work_dir, "outputs")
-        os.makedirs(out_dir, exist_ok=True)
-        self.ckpt_dir = self._latest_checkpoint(out_dir)
-        input_dim = getattr(cfg, "input_dim", 10)
-        hidden_dim = getattr(cfg, "hidden_dim", 64)
-        num_classes = getattr(cfg, "num_classes", 3)
-        batch_size = getattr(cfg, "batch_size", 32)
-        lr = getattr(cfg, "learning_rate", 1e-3)
-        num_epochs = getattr(cfg, "num_epochs", 1000)
-        seed = getattr(cfg, "seed", 42)
+        cfg : DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
 
-        print(f"Starting checkpointable MLP training with seed {seed}")
+        # Create output directory
+        out_dir = cfg.paths.out_dir
+        os.makedirs(out_dir, exist_ok=True)
+
+        # Get ckpt dir
+        self.ckpt_dir = self._latest_checkpoint(out_dir)
+
+        # Get trainer config variables
+        input_dim = OmegaConf.select(cfg, "trainer.input_dim", default=10)
+        hidden_dim = OmegaConf.select(cfg, "trainer.hidden_dim", default=64)
+        num_classes = OmegaConf.select(cfg, "trainer.num_classes", default=3)
+        batch_size = OmegaConf.select(cfg, "trainer.batch_size", default=32)
+        lr = OmegaConf.select(cfg, "trainer.learning_rate", default=1e-3)
+        num_epochs = OmegaConf.select(cfg, "trainer.num_epochs", default=1000)
+        seed = OmegaConf.select(cfg, "trainer.seed", default=42)
+
+        logger.info(f"Starting checkpointable MLP training with seed {seed}")
         torch.manual_seed(seed)
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {device}")
+        logger.info(f"Using device: {device}")
 
         model = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
@@ -91,14 +102,14 @@ class CheckpointableMLPTrainer(submitit.helpers.Checkpointable):
         if self.ckpt_dir and os.path.exists(self.ckpt_dir):
             checkpoint_path = os.path.join(self.ckpt_dir, "model.pt")
             if os.path.exists(checkpoint_path):
-                print(f"Resuming from checkpoint: {self.ckpt_dir}")
+                logger.info(f"Resuming from checkpoint: {self.ckpt_dir}")
                 checkpoint = torch.load(checkpoint_path, map_location=device)
                 model.load_state_dict(checkpoint["model_state_dict"])
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                 start_epoch = checkpoint["epoch"] + 1
-                print(f"Resumed from epoch {checkpoint['epoch']}")
+                logger.info(f"Resumed from epoch {checkpoint['epoch']}")
 
-        print(f"Training from epoch {start_epoch} to {num_epochs}...")
+        logger.info(f"Training from epoch {start_epoch} to {num_epochs}...")
 
         # Training loop with checkpointing
         for epoch in range(start_epoch, num_epochs):
@@ -121,13 +132,13 @@ class CheckpointableMLPTrainer(submitit.helpers.Checkpointable):
 
             acc = 100.0 * correct / total
             avg_loss = loss_sum / len(loader)
-            print(f"Epoch {epoch}: loss={avg_loss:.4f} acc={acc:.2f}%")
+            logger.info(f"Epoch {epoch}: loss={avg_loss:.4f} acc={acc:.2f}%")
 
             # Save checkpoint every 100 epochs
             if epoch % 100 == 0 or epoch == num_epochs - 1:
                 self._save_checkpoint(model, optimizer, epoch, out_dir, avg_loss, acc)
 
-        print("Training completed!")
+        logger.info("Training completed!")
         return 0
 
     def checkpoint(self, *args, **kwargs):

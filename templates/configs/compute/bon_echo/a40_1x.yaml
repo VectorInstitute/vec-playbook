@@ -1,0 +1,13 @@
+cluster: bon_echo
+nodes: 1
+gpu_type: a40
+gpus_per_node: 1
+gres: gpu:${.gpu_type}:${.gpus_per_node}
+tasks_per_node: ${.gpus_per_node}
+cpus_per_task: 8
+mem_gb: 40 # values are binary GiB as expected by Slurm
+work_root: /scratch/ssd004/scratch/${oc.env:USER}
+timeout_min: 60
+slurm:
+  partition: a40
+  additional_parameters: {}

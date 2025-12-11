@@ -6,11 +6,4 @@
 
 user:
   slurm:
-    account: aip-x-ksupport
-    partition: gpubase_l40s_b1
-
-# # Required for Vaughan, as that cluster runs a dated version of Linux.
-# hydra:
-#   launcher:
-#     python: "templates/configs/compute/vaughan/run_in_container.sh uv run python"
-
+    account: vector

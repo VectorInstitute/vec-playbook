@@ -1,8 +1,0 @@
-cluster: vaughan
-gpu_type: ""
-gpus_per_node: 0
-time_limit: "0:15:00"
-timeout_min: 15
-mem_gb: 8
-cpus_per_task: 2
-gres: ""
