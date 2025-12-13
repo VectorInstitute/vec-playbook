@@ -210,6 +210,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
             executor_configs=self.rollout_executor_configs,
             engine_args=EngineArgs(
                 model=model_name,
+                tokenizer=self.cfg.base_model, # tokenizer isn't updated
                 compilation_config=CompilationConfig(
                     cache_dir=self.cfg.rollout_vllm.cache_dir.as_posix()
                 ),
