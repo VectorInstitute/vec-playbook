@@ -81,6 +81,7 @@ def load_data(data_cfg: DataConfig):
 class GRPOTrainer(submitit.helpers.Checkpointable):
     """GRPO using on-policy SLURM rollout and one-GPU backprop."""
 
+    # To override the agent definition, subclass GRPOTrainer.
     policy_agent = agents.Agent(
         "Math Problem Solver", instructions="Solve the math problem."
     )
