@@ -28,6 +28,10 @@ def main(cfg: DictConfig):
     OmegaConf.resolve(hydra_config)
     OmegaConf.save(hydra_config, save_path)
 
+    import json
+
+    print(json.dumps(hydra_config.__dict__, indent=2, default=str))
+
     # Run the trainer with the run config
     checkpointable_trainer = CheckpointableMLPTrainer()
     return checkpointable_trainer(cfg)

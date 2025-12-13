@@ -34,9 +34,9 @@ uv run python \
 --multirun \
 compute=killarney/l40s_1x \
 requeue=off \
-num_epochs=10 \
-data.train_split="train\[:100\]" \
-run_name="grpo_gsm8k_dry_run"
+trainer.num_epochs=10 \
+trainer.data.train_split="train\[:100\]" \
+trainer.run_name="grpo_gsm8k_dry_run"
 ```
 
 ## Adapting to your workflow
