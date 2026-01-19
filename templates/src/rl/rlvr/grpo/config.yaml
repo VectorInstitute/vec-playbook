@@ -13,10 +13,10 @@ vllm_cache_dir_base: "${oc.env:SCRATCH}/.cache/vllm_compiled_graphs/"
 base_vllm_config: &base_vllm_config
   # (base config for reuse across rollout and judge)
   # "submitit_python" is required for vaughan or if you installed vllm in a separate venv
-  submitit_python: "templates/configs/compute/bon_echo/run_in_container.sh uv run python"
+  # submitit_python: "templates/configs/compute/bon_echo/run_in_container.sh uv run python"
   submitit_args:
-    # gres: "gpu:l40s:1" # for killarney
-    gres: "gpu:a40:1" # for vaughan
+    gres: "gpu:l40s:1" # for killarney
+    # gres: "gpu:a40:1" # for vaughan
     timeout_min:
     account: "${user.slurm.account}"
 
