@@ -1,13 +1,14 @@
 """Single-GPU MLP training with checkpointing."""
 
-import os
 import logging
+import os
 
 import submitit
 import torch
+from omegaconf import DictConfig, OmegaConf
 from torch import nn, optim
 from torch.utils.data import DataLoader, TensorDataset
-from omegaconf import OmegaConf, DictConfig
+
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class CheckpointableMLPTrainer(submitit.helpers.Checkpointable):
 
     def __call__(self, cfg):
         """Train the MLP model."""
-        cfg : DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
+        cfg: DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
 
         # Create output directory
         out_dir = cfg.paths.out_dir

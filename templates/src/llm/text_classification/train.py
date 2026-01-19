@@ -1,10 +1,11 @@
 """Fine-tune a HF model for text classification with a basic loop."""
 
-import os
 import logging
+import os
 
 import submitit
 from datasets import load_dataset
+from omegaconf import DictConfig, OmegaConf
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -13,9 +14,9 @@ from transformers import (
     TrainingArguments,
 )
 
-from omegaconf import DictConfig, OmegaConf
 
 logger = logging.getLogger(__name__)
+
 
 class TextClassificationTrainer(submitit.helpers.Checkpointable):
     """Trainer for text classification."""
@@ -33,7 +34,7 @@ class TextClassificationTrainer(submitit.helpers.Checkpointable):
 
     def __call__(self, cfg):
         """Train the model."""
-        cfg : DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
+        cfg: DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
 
         # Create output directory
         out_dir = cfg.paths.out_dir
@@ -41,30 +42,41 @@ class TextClassificationTrainer(submitit.helpers.Checkpointable):
 
         self.ckpt_dir = self._latest_checkpoint(out_dir)
 
-        model_name = OmegaConf.select(cfg, "trainer.model_name", default="distilbert-base-uncased")
+        model_name = OmegaConf.select(
+            cfg, "trainer.model_name", default="distilbert-base-uncased"
+        )
         ds = load_dataset("ag_news")
         tok = AutoTokenizer.from_pretrained(model_name, use_fast=True)
 
         def tok_fn(ex):
             return tok(
-                ex["text"], truncation=True, max_length=OmegaConf.select(cfg, "trainer.max_length", default=256)
+                ex["text"],
+                truncation=True,
+                max_length=OmegaConf.select(cfg, "trainer.max_length", default=256),
             )
 
         ds = ds.map(tok_fn, batched=True)
         collator = DataCollatorWithPadding(tokenizer=tok)
 
         model = AutoModelForSequenceClassification.from_pretrained(
-            model_name, num_labels=OmegaConf.select(cfg, "trainer.num_labels", default=4)
+            model_name,
+            num_labels=OmegaConf.select(cfg, "trainer.num_labels", default=4),
         )
 
-        # Feel free to add any additional args you want to pass to the config.yaml and pass them here
-        # See the following link for a full description of all 119 possible args: https://huggingface.co/docs/transformers/v4.56.2/en/main_classes/trainer#transformers.TrainingArguments
+        # Feel free to add any additional args to config.yaml and pass them here.
+        # See: https://huggingface.co/docs/transformers/main_classes/trainer
         args = TrainingArguments(
             output_dir=out_dir,
             overwrite_output_dir=True,
-            num_train_epochs=OmegaConf.select(cfg, "trainer.num_train_epochs", default=2),
-            per_device_train_batch_size=OmegaConf.select(cfg, "trainer.per_device_train_batch_size", default=16),
-            per_device_eval_batch_size=OmegaConf.select(cfg, "trainer.per_device_eval_batch_size", default=32),
+            num_train_epochs=OmegaConf.select(
+                cfg, "trainer.num_train_epochs", default=2
+            ),
+            per_device_train_batch_size=OmegaConf.select(
+                cfg, "trainer.per_device_train_batch_size", default=16
+            ),
+            per_device_eval_batch_size=OmegaConf.select(
+                cfg, "trainer.per_device_eval_batch_size", default=32
+            ),
             eval_strategy="steps",
             eval_steps=OmegaConf.select(cfg, "trainer.eval_steps", default=200),
             logging_steps=OmegaConf.select(cfg, "trainer.logging_steps", default=50),
@@ -72,7 +84,9 @@ class TextClassificationTrainer(submitit.helpers.Checkpointable):
             weight_decay=OmegaConf.select(cfg, "trainer.weight_decay", default=0.01),
             save_strategy="steps",
             save_steps=OmegaConf.select(cfg, "trainer.save_steps", default=100),
-            save_total_limit=OmegaConf.select(cfg, "trainer.save_total_limit", default=2),
+            save_total_limit=OmegaConf.select(
+                cfg, "trainer.save_total_limit", default=2
+            ),
             report_to=[],
         )
 

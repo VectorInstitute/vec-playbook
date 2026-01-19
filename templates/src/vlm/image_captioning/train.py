@@ -1,17 +1,19 @@
 """Fine-tune BLIP VLM model for image captioning."""
 
+import logging
 import os
 import random
-import logging
 
 import submitit
 import torch
 from datasets import load_dataset
+from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 from transformers import BlipForConditionalGeneration, BlipProcessor
-from omegaconf import DictConfig, OmegaConf
+
 
 logger = logging.getLogger(__name__)
+
 
 class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
     """Trainer for VLM image captioning."""
@@ -209,7 +211,7 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
 
     def __call__(self, cfg):
         """Train the VLM model."""
-        cfg : DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
+        cfg: DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
 
         # Create output directory
         out_dir = cfg.paths.out_dir
@@ -219,7 +221,9 @@ class ImageCaptioningTrainer(submitit.helpers.Checkpointable):
         self.ckpt_dir = self._latest_checkpoint(out_dir)
 
         # Configuration
-        model_name = OmegaConf.select(cfg, "trainer.model_name", default="Salesforce/blip-image-captioning-base")
+        model_name = OmegaConf.select(
+            cfg, "trainer.model_name", default="Salesforce/blip-image-captioning-base"
+        )
         lr = OmegaConf.select(cfg, "trainer.learning_rate", default=1e-5)
         num_epochs = OmegaConf.select(cfg, "trainer.num_epochs", default=2)
         seed = OmegaConf.select(cfg, "trainer.seed", default=42)

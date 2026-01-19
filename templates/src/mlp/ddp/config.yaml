@@ -1,7 +1,7 @@
 defaults:
   - _global  # Import global config settings
   - _self_  # Must include the settings from this file
-  
+
 trainer:
   input_dim: 10
   hidden_dim: 64
