@@ -1,3 +1,9 @@
+# user:
+#   slurm:
+#     account: vector
+#     additional_parameters:
+#       qos: m2
+
 user:
   slurm:
     account: vector
