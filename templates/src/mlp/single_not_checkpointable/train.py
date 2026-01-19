@@ -1,10 +1,11 @@
 """Simple single-GPU MLP training (no checkpointing)."""
 
 import logging
+
 import torch
+from omegaconf import DictConfig, OmegaConf
 from torch import nn, optim
 from torch.utils.data import DataLoader, TensorDataset
-from omegaconf import DictConfig, OmegaConf
 
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ class SimpleMLPTrainer:
 
     def __call__(self, cfg):
         """Train the MLP model."""
-        cfg : DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
+        cfg: DictConfig = OmegaConf.create(cfg)  # Ensure cfg is a DictConfig
 
         # Get trainer config variables
         input_dim = OmegaConf.select(cfg, "trainer.input_dim", default=10)
