@@ -236,6 +236,7 @@ def optimize_grpo_one_epoch(
         if max_grad_norm and max_grad_norm > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
 
+        optimizer.step()
         optimizer.zero_grad(set_to_none=True)
         progress.update(step_task_id, advance=1)
 

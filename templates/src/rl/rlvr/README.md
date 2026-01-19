@@ -24,7 +24,7 @@ Current limitations and TODO items:
 
 (Skip this section if you are running on Killarney)
 
-This reference implementation depends on `vllm>=0.11.0`. vLLM does not provide pre-built wheels for older Linux distros, such as the one running on Vaughan (Bon Echo). Follow the steps in [vaughan_setup.md](vaughan_setup.md) before continuing.
+This reference implementation depends on `vllm>=0.11.0`. vLLM does not provide pre-built wheels for older Linux distros, such as the one running on Vaughan (Bon Echo). Follow the steps in [bon_echo_setup.md](bon_echo_setup.md) before continuing.
 
 ## Run Trainer
 

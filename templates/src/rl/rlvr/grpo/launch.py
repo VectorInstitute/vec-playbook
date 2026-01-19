@@ -34,13 +34,12 @@ def main(cfg: DictConfig):
     OmegaConf.resolve(hydra_config)
     OmegaConf.save(hydra_config, save_path)
 
-
     # Resolve the run config so interpolations are applied before logging/validation
     resolved_cfg = OmegaConf.to_container(cfg, resolve=True)
-    grpo_config = GRPOConfig.model_validate(resolved_cfg["trainer"]) # type: ignore
+    grpo_config = GRPOConfig.model_validate(resolved_cfg["trainer"])  # type: ignore
     trainer = GRPOTrainer(grpo_config)
     metrics = trainer()
-    for _epoch, (_item, _reward) in metrics:
+    for _epoch, (_item, _reward) in enumerate(metrics):
         print(f"epoch: {_epoch}, reward: {_reward:.03f}, metrics: {_item}")
 
 

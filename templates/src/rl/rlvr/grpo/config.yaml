@@ -21,6 +21,8 @@ base_vllm_config: &base_vllm_config
     account: "${user.slurm.account}"
 
 trainer:
+  # Model paths assume Vector cluster infrastructure where weights are pre-downloaded.
+  # Override via CLI: uv run python -m rl.rlvr.grpo.launch trainer.base_model=/your/path
   base_model: "/model-weights/Qwen2.5-1.5B-Instruct"
   tokenizer_name: "${trainer.base_model}"
   checkpoint_folder: "${oc.env:SCRATCH}/checkpoints/20251127-Qwen2.5-1.5B-Instruct"
@@ -58,10 +60,10 @@ trainer:
   llm_judge_vllm:
     <<: *base_vllm_config
 
+    # Override via CLI: uv run python -m rl.rlvr.grpo.launch trainer.llm_judge_vllm.model_name=/your/path
     model_name: "/model-weights/Qwen3-8B"
     max_model_len: 2048
     num_replicas: 1
     concurrency_per_replica: 128
 
     cache_dir: "${vllm_cache_dir_base}/${.model_name}/"
-

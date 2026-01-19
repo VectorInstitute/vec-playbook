@@ -8,6 +8,7 @@ from typing import Any, cast
 
 import agents
 import pydantic
+from agents.items import ItemHelpers
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageFunctionToolCallParam,
@@ -144,8 +145,6 @@ def _collect_reason_text_before(items: list[object], end: int) -> list[str]:
         if getattr(it, "type", None) != "message_output_item":
             continue
         try:
-            from agents.items import ItemHelpers
-
             it_any: Any = it
             text = ItemHelpers.text_message_output(it_any)
         except Exception:

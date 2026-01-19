@@ -38,7 +38,7 @@ def get_langfuse_client() -> "Langfuse | None":
     except Exception as e:
         logger.info(
             "LangFuse isn't set up correctly; "
-            f"observability features would be unavailable{e}"
+            f"observability features would be unavailable: {e}"
         )
 
 

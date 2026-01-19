@@ -163,7 +163,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
             ),
         ]
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.base_model)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
 
     def get_checkpoint_paths(self, step_index: int) -> _CheckpointPaths:
         """Return checkpoint paths and recycle previous checkpoints if enabled.
@@ -210,7 +210,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
             executor_configs=self.rollout_executor_configs,
             engine_args=EngineArgs(
                 model=model_name,
-                tokenizer=self.cfg.base_model, # tokenizer isn't updated
+                tokenizer=self.cfg.base_model,  # tokenizer isn't updated
                 compilation_config=CompilationConfig(
                     cache_dir=self.cfg.rollout_vllm.cache_dir.as_posix()
                 ),
@@ -301,7 +301,7 @@ class GRPOTrainer(submitit.helpers.Checkpointable):
                     current_policy_path=_paths.current,
                     kl_ref_path=_paths.kl_ref,
                     checkpoint_output_path=_paths.output,
-                    optimizer_path=self.cfg.optimizer_folder,
+                    optimizer_path=self.optimizer_path,
                     hyperparameters=self.cfg.hyperparameters,
                 )
             ).result()
